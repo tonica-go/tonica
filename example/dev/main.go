@@ -58,13 +58,11 @@ func initServices(app *tonica.App) {
 			consumer.WithClient(kafka.New(&kafka.Config{
 				Brokers:         []string{config.GetEnv("KAFKA_BROKERS", "")},
 				ConsumerGroupID: config.GetEnv("KAFKA_CONSUMER_GROUP_ID", "payments"),
-				BatchBytes:      100000,
-				BatchTimeout:    1,
-				BatchSize:       100,
+				BatchBytes:      config.GetEnvInt("KAFKA_BATCH_BYTES", 5000),
+				BatchTimeout:    config.GetEnvInt("KAFKA_BATCH_TIMEOUT", 5000),
+				BatchSize:       config.GetEnvInt("KAFKA_BATCH_SIZE", 5000),
 				TLS:             kafka.TLSConfig{},
 			}, app.GetMetricManager())),
-			consumer.WithTopic("payments"),
-			consumer.WithConsumerGroup("payments"),
 			consumer.WithHandler(payment.GetConsumer(paymentSrc)),
 		),
 	)
