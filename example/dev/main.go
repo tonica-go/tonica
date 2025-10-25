@@ -66,6 +66,9 @@ func initServices(app *tonica.App) {
 			consumer.WithHandler(payment.GetConsumer(paymentSrc)),
 		),
 	)
+
+	//cs, _ := app.GetRegistry().GetConsumer("payments")
+	//_ = cs.GetClient().Publish(ctx, "payments", []byte("Hello World"))
 }
 
 //
