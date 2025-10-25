@@ -94,6 +94,10 @@ func (a *App) runAio() {
 	}
 	defer func() { _ = o.Shutdown(context.Background()) }()
 
+	workers, err := a.GetRegistry().GetAllWorkers()
+	if err != nil {
+		a.GetLogger().Fatal(err)
+	}
 	consumers, err := a.GetRegistry().GetAllConsumers()
 	if err != nil {
 		a.GetLogger().Fatal(err)
@@ -240,6 +244,15 @@ func (a *App) runAio() {
 	for _, consumer := range consumers {
 		go func() {
 			err := consumer.Start(ctx)
+			if err != nil {
+				a.GetLogger().Fatal(err)
+			}
+		}()
+	}
+
+	for _, w := range workers {
+		go func() {
+			err := w.Start()
 			if err != nil {
 				a.GetLogger().Fatal(err)
 			}

@@ -44,6 +44,7 @@ func WithName(name string) Option {
 		a.name = name
 	}
 }
+
 func WithClient(c pubsub.Client) Option {
 	return func(a *Consumer) {
 		a.client = c
