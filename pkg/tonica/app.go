@@ -36,6 +36,9 @@ type App struct {
 
 	spec string
 
+	router       *gin.Engine
+	metricRouter *gin.Engine
+
 	metricsManager metrics.Manager
 }
 
@@ -46,6 +49,8 @@ func NewApp(options ...AppOption) *App {
 		registry:       registry.NewRegistry(),
 		logger:         l,
 		metricsManager: metrics.NewMetricsManager(exporters.Prometheus("aoo", "0.0.0")),
+		router:         gin.New(),
+		metricRouter:   gin.New(),
 	}
 
 	for _, option := range options {
@@ -69,8 +74,12 @@ func (a *App) GetRegistry() registry.Registry {
 	return a.registry
 }
 
-func (a *App) RegisterService(desc *grpc.ServiceDesc, impl any) {
+func (a *App) GetMetricRouter() *gin.Engine {
+	return a.metricRouter
+}
 
+func (a *App) GetRouter() *gin.Engine {
+	return a.router
 }
 
 // initObs initializes OpenTelemetry + Prometheus for a given service name.
@@ -162,8 +171,7 @@ func (a *App) runAio() {
 	}
 
 	go func() {
-		gin.SetMode(gin.ReleaseMode)
-		router := gin.New()
+		router := a.metricRouter
 
 		router.Use(gin.Recovery())
 		router.Use(obs.HTTPLogger())
@@ -199,17 +207,15 @@ func (a *App) runAio() {
 	}()
 
 	go func() {
-		gin.SetMode(gin.ReleaseMode)
-		router := gin.New()
-		//router.Use(sloggin.New(slog.Default()))
-		router.Use(gin.Recovery())
-		app := router.Group("/")
-		app.Use(otelgin.Middleware(a.Name + "-http"))
-		app.Use(obs.RequestID())
-		app.Use(obs.HTTPLogger())
-		app.Use(cors.New(buildCORSConfig()))
+		router := a.router
 
-		app.GET("/ping", func(c *gin.Context) {
+		router.Use(gin.Recovery())
+		router.Use(otelgin.Middleware(a.Name + "-http"))
+		router.Use(obs.RequestID())
+		router.Use(obs.HTTPLogger())
+		router.Use(cors.New(buildCORSConfig()))
+
+		router.GET("/ping", func(c *gin.Context) {
 			c.JSON(200, gin.H{
 				"message": "pong",
 			})
@@ -231,10 +237,10 @@ func (a *App) runAio() {
 				}
 			}
 
-			app.GET("/docs", gin.WrapF(docs))
+			router.GET("/docs", gin.WrapF(docs))
 		}
 
-		app.Any("/v1/*any", gin.WrapH(gwmux))
+		router.Any("/v1/*any", gin.WrapH(gwmux))
 
 		addr := config.GetEnv("APP_HTTP_ADDR", ":8080")
 		a.GetLogger().Println("http server running, listening addr", addr)
