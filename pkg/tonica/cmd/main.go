@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func main() {
+func Run() {
 	cmd := &cli.Command{
 		Commands: []*cli.Command{
 			{
