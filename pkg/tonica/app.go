@@ -94,6 +94,10 @@ func (a *App) runAio() {
 	}
 	defer func() { _ = o.Shutdown(context.Background()) }()
 
+	consumers, err := a.GetRegistry().GetAllConsumers()
+	if err != nil {
+		a.GetLogger().Fatal(err)
+	}
 	services, err := a.GetRegistry().GetAllServices()
 	if err != nil {
 		a.GetLogger().Fatal(err)
@@ -232,6 +236,15 @@ func (a *App) runAio() {
 		a.GetLogger().Println("http server running, listening addr", addr)
 		router.Run(addr)
 	}()
+
+	for _, consumer := range consumers {
+		go func() {
+			err := consumer.Start(ctx)
+			if err != nil {
+				a.GetLogger().Fatal(err)
+			}
+		}()
+	}
 
 	select {
 	case <-ctx.Done():

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -37,7 +38,6 @@ type googleClient struct {
 	Config
 
 	client      Client
-	logger      pubsub.Logger
 	metrics     Metrics
 	receiveChan map[string]chan *pubsub.Message
 	subStarted  map[string]struct{}
@@ -50,28 +50,27 @@ const (
 )
 
 //nolint:revive // We do not want anyone using the client without initialization steps.
-func New(conf Config, logger pubsub.Logger, metrics Metrics) *googleClient {
+func New(conf Config, metrics Metrics) *googleClient {
 	err := validateConfigs(&conf)
 	if err != nil {
-		logger.Errorf("could not configure google pubsub, error: %v", err)
+		slog.Error(fmt.Sprintf("could not configure google pubsub, error: %v", err))
 
 		return nil
 	}
 
-	logger.Debugf("connecting to google pubsub client with projectID '%s' and subscriptionName '%s", conf.ProjectID, conf.SubscriptionName)
+	slog.Info(fmt.Sprintf("connecting to google pubsub client with projectID '%s' and subscriptionName '%s", conf.ProjectID, conf.SubscriptionName))
 
 	var client googleClient
 
 	client.Config = conf
-	client.logger = logger
 	client.metrics = metrics
 	client.receiveChan = make(map[string]chan *pubsub.Message)
 	client.subStarted = make(map[string]struct{})
 	client.mu = sync.RWMutex{}
 
-	gClient, err := connect(conf, logger)
+	gClient, err := connect(conf)
 	if err != nil {
-		go retryConnect(conf, logger, &client)
+		go retryConnect(conf, &client)
 
 		return &client
 	}
@@ -81,10 +80,10 @@ func New(conf Config, logger pubsub.Logger, metrics Metrics) *googleClient {
 	return &client
 }
 
-func connect(conf Config, logger pubsub.Logger) (*gcPubSub.Client, error) {
+func connect(conf Config) (*gcPubSub.Client, error) {
 	client, err := gcPubSub.NewClient(context.Background(), conf.ProjectID)
 	if err != nil {
-		logger.Errorf("could not create Google PubSub client, error: %v", err)
+		slog.Error(fmt.Sprintf("could not create Google PubSub client, error: %v", err))
 		return nil, err
 	}
 
@@ -96,16 +95,16 @@ func connect(conf Config, logger pubsub.Logger) (*gcPubSub.Client, error) {
 	_, err = it.Next()
 	if err != nil {
 		if errors.Is(err, iterator.Done) {
-			logger.Debugf("no topics found in Google PubSub")
+			slog.Info(fmt.Sprintf("no topics found in Google PubSub"))
 			return client, nil
 		}
 
-		logger.Errorf("google pubsub connection validation failed, error: %v", err)
+		slog.Error(fmt.Sprintf("google pubsub connection validation failed, error: %v", err))
 
 		return nil, err
 	}
 
-	logger.Logf("connected to google pubsub client, projectID: %s", client.Project())
+	slog.Info(fmt.Sprintf("connected to google pubsub client, projectID: %s", client.Project()))
 
 	return client, nil
 }
@@ -118,34 +117,34 @@ func (g *googleClient) Publish(ctx context.Context, topic string, message []byte
 
 	t, err := g.getTopic(ctx, topic)
 	if err != nil {
-		g.logger.Errorf("could not create topic '%s', error: %v", topic, err)
+		slog.Error(fmt.Sprintf("could not create topic '%s', error: %v", topic, err))
 
 		return err
 	}
 
-	start := time.Now()
+	//start := time.Now()
 	result := t.Publish(ctx, &gcPubSub.Message{
 		Data:        message,
 		PublishTime: time.Now(),
 	})
-	end := time.Since(start)
+	//end := time.Since(start)
 
 	_, err = result.Get(ctx)
 	if err != nil {
-		g.logger.Errorf("error publishing to google topic '%s', error: %v", topic, err)
+		slog.Error(fmt.Sprintf("error publishing to google topic '%s', error: %v", topic, err))
 
 		return err
 	}
-
-	g.logger.Debug(&pubsub.Log{
-		Mode:          "PUB",
-		CorrelationID: span.SpanContext().TraceID().String(),
-		MessageValue:  string(message),
-		Topic:         topic,
-		Host:          g.ProjectID,
-		PubSubBackend: "GCP",
-		Time:          end.Microseconds(),
-	})
+	//
+	//g.logger.Debug(&pubsub.Log{
+	//	Mode:          "PUB",
+	//	CorrelationID: span.SpanContext().TraceID().String(),
+	//	MessageValue:  string(message),
+	//	Topic:         topic,
+	//	Host:          g.ProjectID,
+	//	PubSubBackend: "GCP",
+	//	Time:          end.Microseconds(),
+	//})
 
 	g.metrics.IncrementCounter(ctx, "app_pubsub_publish_success_count", "topic", topic)
 
@@ -153,7 +152,7 @@ func (g *googleClient) Publish(ctx context.Context, topic string, message []byte
 }
 
 func (g *googleClient) Subscribe(ctx context.Context, topic string) (*pubsub.Message, error) {
-	var end time.Duration
+	//var end time.Duration
 
 	if g.client == nil {
 		return nil, nil
@@ -181,11 +180,11 @@ func (g *googleClient) Subscribe(ctx context.Context, topic string) (*pubsub.Mes
 			return nil, err
 		}
 
-		start := time.Now()
+		//start := time.Now()
 
 		processMessage := func(ctx context.Context, msg *gcPubSub.Message) {
 			m := pubsub.NewMessage(ctx)
-			end = time.Since(start)
+			//end = time.Since(start)
 
 			m.Topic = topic
 			m.Value = msg.Data
@@ -206,7 +205,7 @@ func (g *googleClient) Subscribe(ctx context.Context, topic string) (*pubsub.Mes
 		go func() {
 			err = subscription.Receive(ctx, processMessage)
 			if err != nil {
-				g.logger.Errorf("error getting a message from google: %s", err.Error())
+				slog.Error(fmt.Sprintf("error getting a message from google: %s", err.Error()))
 			}
 		}()
 
@@ -218,15 +217,15 @@ func (g *googleClient) Subscribe(ctx context.Context, topic string) (*pubsub.Mes
 		g.metrics.IncrementCounter(spanCtx, "app_pubsub_subscribe_success_count", "topic", topic, "subscription_name",
 			g.Config.SubscriptionName)
 
-		g.logger.Debug(&pubsub.Log{
-			Mode:          "SUB",
-			CorrelationID: span.SpanContext().TraceID().String(),
-			MessageValue:  string(m.Value),
-			Topic:         topic,
-			Host:          g.Config.ProjectID,
-			PubSubBackend: "GCP",
-			Time:          end.Microseconds(),
-		})
+		//g.logger.Debug(&pubsub.Log{
+		//	Mode:          "SUB",
+		//	CorrelationID: span.SpanContext().TraceID().String(),
+		//	MessageValue:  string(m.Value),
+		//	Topic:         topic,
+		//	Host:          g.Config.ProjectID,
+		//	PubSubBackend: "GCP",
+		//	Time:          end.Microseconds(),
+		//})
 
 		return m, nil
 	case <-ctx.Done():
@@ -277,12 +276,12 @@ func (g *googleClient) Query(ctx context.Context, query string, args ...any) ([]
 				return
 			default:
 				// Channel might be full, try non-blocking send
-				g.logger.Debugf("Query: message channel full for topic %s", query)
+				slog.Info(fmt.Sprintf("Query: message channel full for topic %s", query))
 			}
 		})
 
 		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			g.logger.Debugf("Query: receive ended for topic %s: %v", query, err)
+			slog.Info(fmt.Sprintf("Query: receive ended for topic %s: %v", query, err))
 		}
 	}()
 
@@ -318,7 +317,7 @@ func (g *googleClient) getSubscription(ctx context.Context, topic *gcPubSub.Topi
 	// check if subscription already exists or not
 	ok, err := subscription.Exists(context.Background())
 	if err != nil {
-		g.logger.Errorf("unable to check the existence of subscription, error: %v", err.Error())
+		slog.Error(fmt.Sprintf("unable to check the existence of subscription, error: %v", err.Error()))
 
 		return nil, err
 	}
@@ -374,20 +373,20 @@ func (g *googleClient) Close() error {
 	return nil
 }
 
-func retryConnect(conf Config, logger pubsub.Logger, g *googleClient) {
+func retryConnect(conf Config, g *googleClient) {
 	for {
-		client, err := connect(conf, logger)
+		client, err := connect(conf)
 		if err == nil {
 			g.mu.Lock()
 			g.client = client
 			g.mu.Unlock()
 
-			logger.Logf("connected to google pubsub client, projectID: %s", conf.ProjectID)
+			slog.Info(fmt.Sprintf("connected to google pubsub client, projectID: %s", conf.ProjectID))
 
 			return
 		}
 
-		logger.Errorf("could not connect to Google PubSub, error: %v", err)
+		slog.Error(fmt.Sprintf("could not connect to Google PubSub, error: %v", err))
 
 		time.Sleep(defaultRetryInterval)
 	}

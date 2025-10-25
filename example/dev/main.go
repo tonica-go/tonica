@@ -9,7 +9,9 @@ import (
 	"github.com/tonica-go/tonica/example/dev/services/report"
 	"github.com/tonica-go/tonica/pkg/tonica"
 	"github.com/tonica-go/tonica/pkg/tonica/config"
+	"github.com/tonica-go/tonica/pkg/tonica/consumer"
 	"github.com/tonica-go/tonica/pkg/tonica/service"
+	"github.com/tonica-go/tonica/pkg/tonica/storage/pubsub/kafka"
 )
 
 func main() {
@@ -34,20 +36,36 @@ func main() {
 }
 
 func initServices(app *tonica.App) {
-	app.GetRegistry().MustRegisterService(
-		service.NewService(
-			service.WithName(paymentv1.ServiceName),
-			service.WithGRPC(payment.RegisterGRPC),
-			service.WithGRPCAddr(config.GetEnv(paymentv1.ServiceAddrEnvName, ":9000")),
-			service.WithGateway(payment.RegisterGateway),
-		),
+	paymentSrc := service.NewService(
+		service.WithName(paymentv1.ServiceName),
+		service.WithGRPC(payment.RegisterGRPC),
+		service.WithGRPCAddr(config.GetEnv(paymentv1.ServiceAddrEnvName, ":9000")),
+		service.WithGateway(payment.RegisterGateway),
 	)
+	app.GetRegistry().MustRegisterService(paymentSrc)
 
 	app.GetRegistry().MustRegisterService(
 		service.NewService(
 			service.WithName(reportsv1.ServiceName),
 			service.WithGRPC(report.RegisterGRPC),
 			service.WithGRPCAddr(config.GetEnv(reportsv1.ServiceAddrEnvName, ":9001")),
+		),
+	)
+
+	app.GetRegistry().MustRegisterConsumer(
+		consumer.NewConsumer(
+			consumer.WithName("payments"),
+			consumer.WithClient(kafka.New(&kafka.Config{
+				Brokers:         []string{config.GetEnv("KAFKA_BROKERS", "")},
+				ConsumerGroupID: config.GetEnv("KAFKA_CONSUMER_GROUP_ID", "payments"),
+				BatchBytes:      100000,
+				BatchTimeout:    1,
+				BatchSize:       100,
+				TLS:             kafka.TLSConfig{},
+			}, app.GetMetricManager())),
+			consumer.WithTopic("payments"),
+			consumer.WithConsumerGroup("payments"),
+			consumer.WithHandler(payment.GetConsumer(paymentSrc)),
 		),
 	)
 }

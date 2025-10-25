@@ -19,6 +19,7 @@ type Registry interface {
 	GetAllWorkers() ([]*worker.Worker, error)
 
 	RegisterConsumer(name string, item *consumer.Consumer) error
+	MustRegisterConsumer(item *consumer.Consumer)
 	GetConsumer(name string) (*consumer.Consumer, error)
 	GetAllConsumers() ([]*consumer.Consumer, error)
 }
@@ -44,6 +45,14 @@ func (r *AppRegistry) MustRegisterService(item *service.Service) {
 		panic(fmt.Errorf("service %s already exists", name))
 	}
 	r.services[name] = item
+}
+
+func (r *AppRegistry) MustRegisterConsumer(item *consumer.Consumer) {
+	name := item.GetName()
+	if _, ok := r.consumers[name]; ok {
+		panic(fmt.Errorf("consumer %s already exists", name))
+	}
+	r.consumers[name] = item
 }
 
 func (r *AppRegistry) GetService(name string) (*service.Service, error) {
