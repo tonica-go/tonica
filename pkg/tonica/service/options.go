@@ -18,10 +18,12 @@ func WithDB(dsn string) Option {
 	}
 }
 
-func WithRedis(dsn string) Option {
+func WithRedis(addr string, password string, db int) Option {
 	return func(a *Service) {
 		a.storage.rdb = &Redis{
-			dsn: dsn,
+			addr:     addr,
+			password: password,
+			database: db,
 		}
 	}
 }
