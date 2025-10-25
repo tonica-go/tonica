@@ -1,0 +1,18 @@
+version: v1
+
+name: buf.build/local/payment-system
+
+lint:
+  use:
+    - DEFAULT
+
+breaking:
+  use:
+    - FILE
+
+deps:
+  - buf.build/googleapis/googleapis
+  - buf.build/grpc-ecosystem/grpc-gateway
+
+# No need for excludes here; module root is api/proto
+

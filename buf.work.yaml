@@ -1,0 +1,7 @@
+version: v1
+
+# Workspace so buf can be run from repo root
+# while proto module lives in api/proto
+directories:
+  - example/dev/proto
+

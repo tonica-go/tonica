@@ -1,0 +1,23 @@
+version: v1
+
+plugins:
+  - plugin: buf.build/protocolbuffers/go
+    out: example/dev/proto
+    opt:
+      - paths=source_relative
+
+  - plugin: buf.build/grpc/go
+    out: example/dev/proto
+    opt:
+      - paths=source_relative
+
+  - plugin: buf.build/grpc-ecosystem/gateway
+    out: example/dev/proto
+    opt:
+      - paths=source_relative
+
+  - plugin: buf.build/grpc-ecosystem/openapiv2
+    out: example/dev/openapi
+    opt:
+      - allow_merge=true
+      - merge_file_name=openapi

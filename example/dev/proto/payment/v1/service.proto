@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package payment.v1;
+
+option go_package = "proto/gen/payment/v1;paymentv1";
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "Payment System API";
+    version: "v1";
+    description: "Public and private endpoints for auth, profile, and webhooks.";
+  };
+  schemes: HTTP;
+  consumes: "application/json";
+  produces: "application/json";
+  security_definitions: {
+    security: {
+      key: "bearer";
+      value: {
+        type: TYPE_API_KEY;
+        name: "Authorization";
+        in: IN_HEADER;
+        description: "Use 'Bearer <token>'";
+      }
+    }
+  };
+};
+
+service PaymentService {
+  // Public auth endpoint to exchange credentials for a token
+  rpc Auth(AuthRequest) returns (AuthResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Authenticate and get token";
+    };
+  }
+
+  // Private profile endpoint, requires Authorization: Bearer <token>
+  rpc Profile(ProfileRequest) returns (ProfileResponse) {
+    option (google.api.http) = {
+      get: "/v1/profile"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get current user profile";
+      security: { security_requirement: { key: "bearer"; } };
+    };
+  }
+
+  // Public webhook endpoint with hook id in path
+  rpc Webhook(WebhookRequest) returns (WebhookResponse) {
+    option (google.api.http) = {
+      post: "/v1/webhooks/{hook_id}"
+      body: "payload"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+//      tags: "webhook";
+      summary: "Receive a webhook for a given hook id";
+    };
+  }
+}
+
+message AuthRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message AuthResponse {
+  string access_token = 1;
+  string token_type = 2; // e.g., "Bearer"
+  int64 expires_in = 3; // seconds
+}
+
+message ProfileRequest {}
+
+message ProfileResponse {
+  string user_id = 1;
+  string username = 2;
+  string email = 3;
+}
+
+message WebhookRequest {
+  string hook_id = 1; // from path
+  map<string, string> headers = 2; // optional captured headers
+  string payload = 3; // raw body (example)
+}
+
+message WebhookResponse {
+  bool ok = 1;
+  string message = 2;
+}
