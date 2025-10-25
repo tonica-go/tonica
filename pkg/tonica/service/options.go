@@ -1,6 +1,9 @@
 package service
 
-import "log"
+import (
+	"log"
+	"slices"
+)
 
 type Option func(*Service)
 
@@ -10,10 +13,21 @@ func WithName(name string) Option {
 	}
 }
 
-func WithDB(dsn string) Option {
+const (
+	Sqlite   = "sqlite"
+	Mysql    = "mysql"
+	Postgres = "postgres"
+)
+
+func WithDB(dsn string, driver string) Option {
+	allowedDrivers := []string{Sqlite, Mysql, Postgres, ""}
+	if !slices.Contains(allowedDrivers, driver) {
+		log.Fatal("database driver doesn't exists")
+	}
 	return func(a *Service) {
 		a.storage.db = &DB{
-			dsn: dsn,
+			dsn:    dsn,
+			driver: driver,
 		}
 	}
 }
