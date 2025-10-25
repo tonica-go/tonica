@@ -1,6 +1,6 @@
 package tonica
 
-import "github.com/alexrett/tonica/pkg/tonica/config"
+import "github.com/tonica-go/tonica/pkg/tonica/config"
 
 func (a *App) Run() error {
 	// Implementation of the Run method goes here.

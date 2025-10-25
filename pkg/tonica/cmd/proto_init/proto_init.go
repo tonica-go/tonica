@@ -9,7 +9,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/alexrett/tonica/pkg/tonica/cmd/wrap"
+	"github.com/tonica-go/tonica/pkg/tonica/cmd/wrap"
 )
 
 func CreateProto(name string) error {

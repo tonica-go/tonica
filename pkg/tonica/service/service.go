@@ -4,8 +4,8 @@ import (
 	"context"
 	"log"
 
-	"github.com/alexrett/tonica/pkg/tonica/grpc/serviceconfig"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/tonica-go/tonica/pkg/tonica/grpc/serviceconfig"
 	"google.golang.org/grpc"
 )
 

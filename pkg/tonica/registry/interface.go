@@ -3,9 +3,9 @@ package registry
 import (
 	"fmt"
 
-	"github.com/alexrett/tonica/pkg/tonica/consumer"
-	"github.com/alexrett/tonica/pkg/tonica/service"
-	"github.com/alexrett/tonica/pkg/tonica/worker"
+	"github.com/tonica-go/tonica/pkg/tonica/consumer"
+	"github.com/tonica-go/tonica/pkg/tonica/service"
+	"github.com/tonica-go/tonica/pkg/tonica/worker"
 )
 
 type Registry interface {

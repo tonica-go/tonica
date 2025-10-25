@@ -3,9 +3,9 @@ package payment
 import (
 	"context"
 
-	paymentv1 "github.com/alexrett/tonica/example/dev/proto/payment/v1"
-	"github.com/alexrett/tonica/pkg/tonica/service"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	paymentv1 "github.com/tonica-go/tonica/example/dev/proto/payment/v1"
+	"github.com/tonica-go/tonica/pkg/tonica/service"
 	"google.golang.org/grpc"
 )
 

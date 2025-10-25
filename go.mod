@@ -1,4 +1,4 @@
-module github.com/alexrett/tonica
+module github.com/tonica-go/tonica
 
 go 1.25
 

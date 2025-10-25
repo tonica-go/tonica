@@ -3,8 +3,8 @@ package tonica
 import (
 	"log"
 
-	"github.com/alexrett/tonica/pkg/tonica/config"
-	"github.com/alexrett/tonica/pkg/tonica/registry"
+	"github.com/tonica-go/tonica/pkg/tonica/config"
+	"github.com/tonica-go/tonica/pkg/tonica/registry"
 )
 
 type AppOption func(*App)

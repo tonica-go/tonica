@@ -5,9 +5,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/alexrett/tonica/pkg/tonica/cmd/project"
-	"github.com/alexrett/tonica/pkg/tonica/cmd/proto_init"
-	"github.com/alexrett/tonica/pkg/tonica/cmd/wrap"
+	"github.com/tonica-go/tonica/pkg/tonica/cmd/project"
+	"github.com/tonica-go/tonica/pkg/tonica/cmd/proto_init"
+	"github.com/tonica-go/tonica/pkg/tonica/cmd/wrap"
 	"github.com/urfave/cli/v3"
 )
 
@@ -65,6 +65,16 @@ func Run() {
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					path := cmd.String("proto")
 					_, err := wrap.BuildGRPCGoFrServer(path)
+					if err != nil {
+						return err
+					}
+					return nil
+				},
+			},
+			{
+				Name: "install",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					err := project.InstallGoDeps()
 					if err != nil {
 						return err
 					}

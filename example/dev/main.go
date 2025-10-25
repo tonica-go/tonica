@@ -3,13 +3,13 @@ package main
 import (
 	"strings"
 
-	paymentv1 "github.com/alexrett/tonica/example/dev/proto/payment/v1"
-	reportsv1 "github.com/alexrett/tonica/example/dev/proto/reports/v1"
-	"github.com/alexrett/tonica/example/dev/services/payment"
-	"github.com/alexrett/tonica/example/dev/services/report"
-	"github.com/alexrett/tonica/pkg/tonica"
-	"github.com/alexrett/tonica/pkg/tonica/config"
-	"github.com/alexrett/tonica/pkg/tonica/service"
+	paymentv1 "github.com/tonica-go/tonica/example/dev/proto/payment/v1"
+	reportsv1 "github.com/tonica-go/tonica/example/dev/proto/reports/v1"
+	"github.com/tonica-go/tonica/example/dev/services/payment"
+	"github.com/tonica-go/tonica/example/dev/services/report"
+	"github.com/tonica-go/tonica/pkg/tonica"
+	"github.com/tonica-go/tonica/pkg/tonica/config"
+	"github.com/tonica-go/tonica/pkg/tonica/service"
 )
 
 func main() {

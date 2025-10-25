@@ -18,9 +18,9 @@ import (
 	"context"
 	//"time"
 	
-	"github.com/alexrett/tonica/pkg/tonica"
+	"github.com/tonica-go/tonica/pkg/tonica"
 
-	//tonicagRPC "github.com/alexrett/tonica/pkg/tonica/grpc"
+	//tonicagRPC "github.com/tonica-go/tonica/pkg/tonica/grpc"
 	"google.golang.org/grpc"
 
 	{{- if $hasUnary }}
@@ -382,7 +382,7 @@ func (h *{{ $request }}Wrapper) Params(s string) []string {
 
 package {{ .Package }}
 
-import "github.com/alexrett/tonica/pkg/tonica"
+import "github.com/tonica-go/tonica/pkg/tonica"
 
 // Register the gRPC service in your app using the following code in your main.go:
 //
@@ -422,8 +422,8 @@ func (s *{{ $.Service }}GoFrServer) {{ .Name }}(ctx *tonica.Context) (any, error
 package {{ .Package }}
 
 import (
-	"github.com/alexrett/tonica/pkg/tonica"
-	//"github.com/alexrett/tonica/pkg/tonica/metrics"
+	"github.com/tonica-go/tonica/pkg/tonica"
+	//"github.com/tonica-go/tonica/pkg/tonica/metrics"
 	"google.golang.org/grpc"
 )
 
@@ -535,9 +535,9 @@ import (
 	"google.golang.org/grpc"
 	//"time"
 
-	"github.com/alexrett/tonica/pkg/tonica"
+	"github.com/tonica-go/tonica/pkg/tonica"
 
-	//tonicaGRPC "github.com/alexrett/tonica/pkg/tonica/grpc"
+	//tonicaGRPC "github.com/tonica-go/tonica/pkg/tonica/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -642,13 +642,13 @@ import (
 	"sync"
 	//"time"
 
-	"github.com/alexrett/tonica/pkg/tonica"
+	"github.com/tonica-go/tonica/pkg/tonica"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 
-	//tonicagRPC "github.com/alexrett/tonica/pkg/tonica/grpc"
+	//tonicagRPC "github.com/tonica-go/tonica/pkg/tonica/grpc"
 )
 
 var (
@@ -745,7 +745,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/alexrett/tonica/pkg/tonica/grpc/serviceconfig"
+	"github.com/tonica-go/tonica/pkg/tonica/grpc/serviceconfig"
 )
 
 const ServiceName = "{{ $.ServiceLower }}-service"

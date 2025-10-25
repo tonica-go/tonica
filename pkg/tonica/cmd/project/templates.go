@@ -90,8 +90,8 @@ const mainGo = `package main
 import (
 	"strings"
 
-	"github.com/alexrett/tonica/pkg/tonica"
-	"github.com/alexrett/tonica/pkg/tonica/config"
+	"github.com/tonica-go/tonica/pkg/tonica"
+	"github.com/tonica-go/tonica/pkg/tonica/config"
 )
 
 func main() {

@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/alexrett/tonica/pkg/tonica/grpc/serviceconfig"
+	"github.com/tonica-go/tonica/pkg/tonica/grpc/serviceconfig"
 	"google.golang.org/grpc"
 )
 

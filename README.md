@@ -43,7 +43,7 @@ ToDo:
 ## Установка
 
 - Требуется Go `1.25`.
-- Подключить модуль: `go get github.com/alexrett/tonica@latest`.
+- Подключить модуль: `go get github.com/tonica-go/tonica@latest`.
 
 ## Как это работает
 
@@ -151,7 +151,7 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
 go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest
 
-go install github.com/alexrett/tonica@latest
+go install github.com/tonica-go/tonica@latest
 
 mkdir example1 && cd example1
 tonica init --name=example1

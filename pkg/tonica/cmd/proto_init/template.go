@@ -56,7 +56,7 @@ const serviceTpl = `package {{ .Name }};
 import (
 	"context"
 
-	"github.com/alexrett/tonica/pkg/tonica/service"
+	"github.com/tonica-go/tonica/pkg/tonica/service"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 )

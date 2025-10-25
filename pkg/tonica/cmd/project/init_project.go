@@ -2,8 +2,10 @@ package project
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"strings"
 	"text/template"
 )
@@ -65,4 +67,29 @@ func executeTemplate(tmpl string, name string) string {
 	}
 
 	return buf.String()
+}
+
+func InstallGoDeps() error {
+	deps := []string{
+		"google.golang.org/protobuf/cmd/protoc-gen-go@latest",
+		"google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest",
+		"github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest",
+		"github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest",
+	}
+
+	for _, dep := range deps {
+		cmdArgs := []string{"install", dep}
+		cmd := exec.Command("go", cmdArgs...)
+		stdout, err := cmd.Output()
+
+		if err != nil {
+			fmt.Println(err.Error())
+			return err
+		}
+
+		// Print the output
+		fmt.Println(string(stdout))
+	}
+
+	return nil
 }

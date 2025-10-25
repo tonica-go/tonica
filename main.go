@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/alexrett/tonica/pkg/tonica/cmd"
+	"github.com/tonica-go/tonica/pkg/tonica/cmd"
 )
 
 func main() {
