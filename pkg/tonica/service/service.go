@@ -2,12 +2,22 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"log"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/redis/go-redis/v9"
 	"github.com/tonica-go/tonica/pkg/tonica/grpc/serviceconfig"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
+	"github.com/uptrace/bun/driver/pgdriver"
 	"google.golang.org/grpc"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/uptrace/bun/dialect/mysqldialect"
+
+	"github.com/uptrace/bun/dialect/sqlitedialect"
+	"github.com/uptrace/bun/driver/sqliteshim"
 )
 
 type GRPCRegistrar func(*grpc.Server, *Service)
@@ -46,7 +56,40 @@ type Storage struct {
 }
 
 type DB struct {
-	dsn string
+	dsn    string
+	driver string
+	db     *bun.DB
+}
+
+func (d *DB) GetClient() *bun.DB {
+	if d.driver == Postgres || d.driver == "" {
+		sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(d.dsn)))
+		if d.db == nil {
+			d.db = bun.NewDB(sqldb, pgdialect.New())
+		}
+	}
+
+	if d.driver == Mysql {
+		sqldb, err := sql.Open("mysql", d.dsn)
+		if err != nil {
+			panic(err)
+		}
+		if d.db == nil {
+			d.db = bun.NewDB(sqldb, mysqldialect.New())
+		}
+	}
+
+	if d.driver == Sqlite {
+		sqldb, err := sql.Open(sqliteshim.ShimName, d.dsn)
+		if err != nil {
+			panic(err)
+		}
+		if d.db == nil {
+			d.db = bun.NewDB(sqldb, sqlitedialect.New())
+		}
+	}
+
+	return d.db
 }
 
 type Redis struct {
