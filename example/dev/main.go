@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	paymentv1 "github.com/tonica-go/tonica/example/dev/proto/payment/v1"
 	reportsv1 "github.com/tonica-go/tonica/example/dev/proto/reports/v1"
 	"github.com/tonica-go/tonica/example/dev/services/payment"
@@ -15,6 +16,7 @@ import (
 )
 
 func main() {
+	gin.SetMode(gin.ReleaseMode)
 	app := tonica.NewApp(
 		tonica.WithSpec("example/dev/openapi/openapi.swagger.json"),
 		tonica.WithConfig(
@@ -28,6 +30,12 @@ func main() {
 			),
 		),
 	)
+	// adding custom gin handlers
+	app.GetRouter().GET("/test", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"hello": "world",
+		})
+	})
 	initServices(app)
 	err := app.Run()
 	if err != nil {
