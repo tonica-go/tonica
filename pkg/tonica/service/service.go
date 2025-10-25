@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/redis/go-redis/v9"
 	"github.com/tonica-go/tonica/pkg/tonica/grpc/serviceconfig"
 	"google.golang.org/grpc"
 )
@@ -49,7 +50,21 @@ type DB struct {
 }
 
 type Redis struct {
-	dsn string
+	addr     string
+	password string
+	database int
+	conn     *redis.Client
+}
+
+func (r *Redis) GetClient() *redis.Client {
+	if r.conn == nil {
+		redis.NewClient(&redis.Options{
+			Addr:     r.addr,
+			Password: r.password, // no password set
+			DB:       r.database, // use default DB
+		})
+	}
+	return r.conn
 }
 
 type PubSub struct {
