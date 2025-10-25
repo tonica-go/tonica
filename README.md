@@ -140,3 +140,24 @@ ToDo:
 ---
 
 Если хотите, можно начать с примера: `go run example/dev/main.go` и открыть `http://localhost:8080/docs` (при наличии `example/dev/openapi/openapi.swagger.json`).
+
+Тулинг для локальной разработки
+
+```bash
+brew install buf
+
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest
+
+go install github.com/alexrett/tonica@latest
+
+mkdir example1 && cd example1
+tonica init --name=example1
+tonica proto --name=example1
+go mod init example1
+go mod tidy
+go run .
+
+```
