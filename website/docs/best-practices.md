@@ -873,17 +873,9 @@ spec:
 func main() {
     app := tonica.NewApp()
 
-    // Setup signal handling
-    ctx, cancel := signal.NotifyContext(
-        context.Background(),
-        os.Interrupt,
-        syscall.SIGTERM,
-    )
-    defer cancel()
-
-    // Run app
-    if err := app.Run(ctx, tonica.ModeAio); err != nil {
-        log.Fatal(err)
+    // Run app (signal handling is automatic)
+    if err := app.Run(); err != nil {
+        app.GetLogger().Fatal(err)
     }
 
     log.Println("Application shutdown complete")

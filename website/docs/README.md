@@ -17,9 +17,9 @@ Welcome to the Tonica framework documentation! Tonica is a modern, proto-first G
 
 ### Additional Resources
 
-- [API Reference](./api-reference.md) - Complete API documentation
-- [Examples](../example/README.md) - Working example applications
-- [Migration Guide](./migration.md) - Migrating from other frameworks
+- [GitHub Repository](https://github.com/tonica-go/tonica) - Source code and examples
+- [Go Package Documentation](https://pkg.go.dev/github.com/tonica-go/tonica) - Complete API reference
+- [GitHub Discussions](https://github.com/tonica-go/tonica/discussions) - Community support
 
 ## Quick Links
 
@@ -61,17 +61,50 @@ service UserService {
 
 ### 🎯 Flexible Run Modes
 ```go
+import (
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+)
+
 // All-in-one mode: gRPC + REST + Workers + Consumers
-app.Run(context.Background(), tonica.ModeAio)
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeAIO),
+        ),
+    ),
+)
+err := app.Run()
 
 // Service only: gRPC + REST
-app.Run(context.Background(), tonica.ModeService)
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeService),
+        ),
+    ),
+)
+err := app.Run()
 
 // Workers only: Temporal workers
-app.Run(context.Background(), tonica.ModeWorker)
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeWorker),
+        ),
+    ),
+)
+err := app.Run()
 
 // Consumers only: Message consumers
-app.Run(context.Background(), tonica.ModeConsumer)
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeConsumer),
+        ),
+    ),
+)
+err := app.Run()
 ```
 
 ### 🔌 Custom Routes
@@ -138,7 +171,7 @@ graph TB
 
 - **Issues**: [GitHub Issues](https://github.com/tonica-go/tonica/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/tonica-go/tonica/discussions)
-- **Examples**: See the [example directory](../example/)
+- **Examples**: [View Examples on GitHub](https://github.com/tonica-go/tonica/tree/main/example)
 
 ## License
 
@@ -146,4 +179,4 @@ graph TB
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](./CONTRIBUTING.md) for details.
+Contributions are welcome! Please check our [GitHub repository](https://github.com/tonica-go/tonica) for contribution guidelines.

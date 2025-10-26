@@ -386,11 +386,8 @@ func TestHTTPServer_Integration(t *testing.T) {
     setupRoutes(app)
 
     // Start server in background
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
-
     go func() {
-        app.Run(ctx, tonica.ModeService)
+        app.Run()
     }()
 
     // Wait for server to start

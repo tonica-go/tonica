@@ -99,15 +99,19 @@ package main
 
 import (
     "context"
-    "log"
 
+    "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
     "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/service"
     hellov1 "github.com/yourusername/myservice/proto/hello/v1"
+    "google.golang.org/grpc"
 )
 
 // HelloServiceImpl implements the HelloService
 type HelloServiceImpl struct {
     hellov1.UnimplementedHelloServiceServer
+    srv *service.Service
 }
 
 func (s *HelloServiceImpl) SayHello(ctx context.Context, req *hellov1.SayHelloRequest) (*hellov1.SayHelloResponse, error) {
@@ -116,27 +120,39 @@ func (s *HelloServiceImpl) SayHello(ctx context.Context, req *hellov1.SayHelloRe
     }, nil
 }
 
+// RegisterGRPC registers the gRPC service
+func RegisterGRPC(s *grpc.Server, srv *service.Service) {
+    hellov1.RegisterHelloServiceServer(s, &HelloServiceImpl{srv: srv})
+}
+
+// RegisterGateway registers the HTTP gateway
+func RegisterGateway(ctx context.Context, mux *runtime.ServeMux, target string, dialOpts []grpc.DialOption) error {
+    return hellov1.RegisterHelloServiceHandlerFromEndpoint(ctx, mux, target, dialOpts)
+}
+
 func main() {
     // Create Tonica app
     app := tonica.NewApp(
-        tonica.WithName("hello-service"),
         tonica.WithSpec("openapi/hello/v1/hello.swagger.json"),
+        tonica.WithConfig(
+            config.NewConfig(
+                config.WithRunMode(config.ModeAIO),
+            ),
+        ),
     )
 
-    // Register your service
-    svc := tonica.NewService(
-        tonica.WithServiceName("HelloService"),
+    // Create and register your service
+    svc := service.NewService(
+        service.WithName("HelloService"),
+        service.WithGRPC(RegisterGRPC),
+        service.WithGateway(RegisterGateway),
+        service.WithGRPCAddr(":9000"),
     )
-
-    // Register gRPC service handler
-    hellov1.RegisterHelloServiceServer(svc.GetGRPCServer(), &HelloServiceImpl{})
-
-    // Register with app
     app.GetRegistry().MustRegisterService(svc)
 
-    // Run in AIO mode (gRPC + REST)
-    if err := app.Run(context.Background(), tonica.ModeAio); err != nil {
-        log.Fatal(err)
+    // Run the application
+    if err := app.Run(); err != nil {
+        app.GetLogger().Fatal(err)
     }
 }
 ```
@@ -206,51 +222,96 @@ See [Custom Routes](./custom-routes.md) for more details.
 
 ### Add Database
 
-Connect to PostgreSQL:
+Connect to PostgreSQL by adding it to your service:
 
 ```go
-db := tonica.NewDB(
-    tonica.WithDriver(tonica.Postgres),
-    tonica.WithDSN("postgres://user:pass@localhost:5432/mydb?sslmode=disable"),
+import "github.com/tonica-go/tonica/pkg/tonica/service"
+
+svc := service.NewService(
+    service.WithName("HelloService"),
+    service.WithGRPC(RegisterGRPC),
+    service.WithGateway(RegisterGateway),
+    service.WithGRPCAddr(":9000"),
+    service.WithDB(
+        "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+        service.Postgres, // or service.Mysql, service.Sqlite
+    ),
 )
 
-// Use the database
-client := db.GetClient()
+// Access database in your service implementation
+func RegisterGRPC(s *grpc.Server, srv *service.Service) {
+    impl := &HelloServiceImpl{
+        srv: srv,
+        db:  srv.GetDB().GetClient(), // *bun.DB
+    }
+    hellov1.RegisterHelloServiceServer(s, impl)
+}
 ```
 
 See [Configuration](./configuration.md) for all database options.
 
 ### Add Redis Cache
 
+Add Redis to your service:
+
 ```go
-redis := tonica.NewRedis(
-    tonica.WithRedisAddr("localhost:6379"),
-    tonica.WithRedisPassword(""),
-    tonica.WithRedisDB(0),
+svc := service.NewService(
+    service.WithName("HelloService"),
+    service.WithGRPC(RegisterGRPC),
+    service.WithGateway(RegisterGateway),
+    service.WithGRPCAddr(":9000"),
+    service.WithRedis("localhost:6379", "", 0), // addr, password, db
 )
 
-// Use Redis
-cache := redis.GetClient()
-cache.Set(ctx, "key", "value", 0)
+// Access Redis in your service implementation
+func RegisterGRPC(s *grpc.Server, srv *service.Service) {
+    impl := &HelloServiceImpl{
+        srv:   srv,
+        redis: srv.GetRedis().GetClient(), // *redis.Client
+    }
+    hellov1.RegisterHelloServiceServer(s, impl)
+}
 ```
 
 ### Add Temporal Workers
 
 ```go
-// Create worker
-worker := tonica.NewWorker(
-    tonica.WithWorkerName("my-worker"),
-    tonica.WithTaskQueue("my-task-queue"),
+import (
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/worker"
+    "go.temporal.io/sdk/client"
 )
 
-// Register activities
-worker.GetWorker().RegisterActivity(MyActivity)
+// Create Temporal client
+temporalClient, err := client.Dial(client.Options{
+    HostPort: "localhost:7233",
+})
+if err != nil {
+    log.Fatal(err)
+}
 
-// Register with app
-app.GetRegistry().MustRegisterWorker("my-worker", worker)
+// Create worker
+w := worker.NewWorker(
+    worker.WithName("my-worker"),
+    worker.WithQueue("my-task-queue"),
+    worker.WithClient(temporalClient),
+    worker.WithActivities([]interface{}{MyActivity}),
+    worker.WithWorkflows([]interface{}{MyWorkflow}),
+)
+
+// Create app and register worker
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeWorker),
+        ),
+    ),
+)
+app.GetRegistry().MustRegisterWorker(w)
 
 // Run in worker mode
-app.Run(context.Background(), tonica.ModeWorker)
+err = app.Run()
 ```
 
 See [Run Modes](./run-modes.md) for more about different modes.
@@ -258,23 +319,47 @@ See [Run Modes](./run-modes.md) for more about different modes.
 ### Add Message Consumers
 
 ```go
+import (
+    "context"
+
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/consumer"
+    "github.com/tonica-go/tonica/pkg/tonica/storage/pubsub"
+    "github.com/tonica-go/tonica/pkg/tonica/storage/pubsub/kafka"
+)
+
+// Create Kafka client
+kafkaClient := kafka.New(&kafka.Config{
+    Brokers:         []string{"localhost:9092"},
+    ConsumerGroupID: "order-processors",
+}, nil)
+
 // Create consumer
-consumer := tonica.NewConsumer(
-    tonica.WithConsumerName("order-consumer"),
-    tonica.WithTopic("orders"),
-    tonica.WithConsumerGroup("order-processors"),
-    tonica.WithHandler(func(ctx context.Context, msg *pubsub.Message) error {
+c := consumer.NewConsumer(
+    consumer.WithName("order-consumer"),
+    consumer.WithTopic("orders"),
+    consumer.WithConsumerGroup("order-processors"),
+    consumer.WithClient(kafkaClient),
+    consumer.WithHandler(func(ctx context.Context, msg *pubsub.Message) error {
         // Process message
         log.Printf("Received order: %s", msg.Value)
         return nil
     }),
 )
 
-// Register with app
-app.GetRegistry().MustRegisterConsumer(consumer)
+// Create app and register consumer
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeConsumer),
+        ),
+    ),
+)
+app.GetRegistry().MustRegisterConsumer(c)
 
 // Run in consumer mode
-app.Run(context.Background(), tonica.ModeConsumer)
+err := app.Run()
 ```
 
 ## Configuration via Environment Variables
@@ -339,17 +424,25 @@ myservice/
 ### Dependency Injection
 
 ```go
+import (
+    "log/slog"
+    "github.com/redis/go-redis/v9"
+    "github.com/uptrace/bun"
+    "github.com/tonica-go/tonica/pkg/tonica/service"
+)
+
 type UserService struct {
-    db    *bun.DB
-    redis *redis.Client
+    db     *bun.DB
+    redis  *redis.Client
     logger *slog.Logger
 }
 
-func NewUserService(app *tonica.App) *UserService {
+// Dependencies are injected from the service
+func NewUserService(srv *service.Service) *UserService {
     return &UserService{
-        db:     app.GetDB().GetClient(),
-        redis:  app.GetRedis().GetClient(),
-        logger: app.GetLogger(),
+        db:     srv.GetDB().GetClient(),
+        redis:  srv.GetRedis().GetClient(),
+        logger: slog.Default(), // or pass logger separately
     }
 }
 ```
@@ -373,10 +466,16 @@ func (s *HelloServiceImpl) SayHello(ctx context.Context, req *hellov1.SayHelloRe
 ### Logging
 
 ```go
-app.GetLogger().Info("Processing request",
+import "log/slog"
+
+// Use slog for structured logging
+slog.Info("Processing request",
     "user_id", userID,
     "action", "create_order",
 )
+
+// Or use app's logger (standard log.Logger)
+app.GetLogger().Printf("Processing request for user %s", userID)
 ```
 
 ### Metrics
@@ -434,7 +533,7 @@ Check your DSN format:
 
 ## Examples
 
-Check out complete working examples in the [example directory](../example/):
+Check out complete working examples on [GitHub](https://github.com/tonica-go/tonica/tree/main/example):
 
 - Simple REST service
 - gRPC service with database

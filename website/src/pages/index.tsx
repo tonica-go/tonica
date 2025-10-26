@@ -15,6 +15,9 @@ function HomepageHeader() {
       <div className="container">
         <Heading as="h1" className="hero__title">
           {siteConfig.title}
+            <div>
+               ‼️ UNDER HEAVY DEVELOPMENT ‼️
+            </div>
         </Heading>
         <img width={'300'} src={"/tonica/img/tonica-gofer.webp"} />
         <p className="hero__subtitle">{siteConfig.tagline}</p>
@@ -26,7 +29,7 @@ function HomepageHeader() {
           </Link>
           <Link
             className="button button--primary button--lg"
-            to="/docs/README"
+            to="/docs/"
             style={{marginLeft: '1rem'}}>
             View Documentation
           </Link>

@@ -31,24 +31,36 @@ specialized components. This flexibility enables better resource utilization and
 **Example:**
 
 ```go
+import (
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/service"
+    "github.com/tonica-go/tonica/pkg/tonica/worker"
+    "github.com/tonica-go/tonica/pkg/tonica/consumer"
+)
+
 app := tonica.NewApp(
-tonica.WithName("myservice"),
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeAIO),
+        ),
+    ),
 )
 
 // Register services
-svc := tonica.NewService(...)
+svc := service.NewService(...)
 app.GetRegistry().MustRegisterService(svc)
 
 // Register workers
-worker := tonica.NewWorker(...)
-app.GetRegistry().MustRegisterWorker("my-worker", worker)
+w := worker.NewWorker(...)
+app.GetRegistry().MustRegisterWorker(w)
 
 // Register consumers
-consumer := tonica.NewConsumer(...)
-app.GetRegistry().MustRegisterConsumer(consumer)
+c := consumer.NewConsumer(...)
+app.GetRegistry().MustRegisterConsumer(c)
 
 // Run in AIO mode
-err := app.Run(context.Background(), tonica.ModeAio)
+err := app.Run()
 ```
 
 **When to Use:**
@@ -98,18 +110,28 @@ resources:
 **Example:**
 
 ```go
+import (
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/service"
+)
+
 app := tonica.NewApp(
-tonica.WithName("myservice-api"),
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeService),
+        ),
+    ),
 )
 
 // Register services ONLY
-svc := tonica.NewService(...)
+svc := service.NewService(...)
 app.GetRegistry().MustRegisterService(svc)
 
 // DON'T register workers or consumers in this mode
 
 // Run in Service mode
-err := app.Run(context.Background(), tonica.ModeService)
+err := app.Run()
 ```
 
 **When to Use:**
@@ -187,25 +209,44 @@ resources:
 **Example:**
 
 ```go
+import (
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/worker"
+    "go.temporal.io/sdk/client"
+)
+
+// Create Temporal client
+temporalClient, err := client.Dial(client.Options{
+    HostPort: "localhost:7233",
+})
+if err != nil {
+    log.Fatal(err)
+}
+
 app := tonica.NewApp(
-tonica.WithName("myservice-worker"),
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeWorker),
+        ),
+    ),
 )
 
 // Register workers ONLY
-worker := tonica.NewWorker(
-tonica.WithWorkerName("email-worker"),
-tonica.WithTaskQueue("email-tasks"),
-tonica.WithMaxConcurrentActivities(10),
+w := worker.NewWorker(
+    worker.WithName("email-worker"),
+    worker.WithQueue("email-tasks"),
+    worker.WithClient(temporalClient),
+    worker.WithActivities([]interface{}{
+        SendEmailActivity,
+        GenerateReportActivity,
+    }),
 )
 
-// Register activities
-worker.GetWorker().RegisterActivity(SendEmailActivity)
-worker.GetWorker().RegisterActivity(GenerateReportActivity)
-
-app.GetRegistry().MustRegisterWorker("email-worker", worker)
+app.GetRegistry().MustRegisterWorker(w)
 
 // Run in Worker mode
-err := app.Run(context.Background(), tonica.ModeWorker)
+err = app.Run()
 ```
 
 **When to Use:**
@@ -288,22 +329,45 @@ resources:
 **Example:**
 
 ```go
+import (
+    "context"
+
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/consumer"
+    "github.com/tonica-go/tonica/pkg/tonica/storage/pubsub"
+    "github.com/tonica-go/tonica/pkg/tonica/storage/pubsub/kafka"
+)
+
+// Create Kafka client
+kafkaClient := kafka.New(&kafka.Config{
+    Brokers:         []string{"localhost:9092"},
+    ConsumerGroupID: "order-processors",
+}, nil)
+
 app := tonica.NewApp(
-tonica.WithName("myservice-consumer"),
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeConsumer),
+        ),
+    ),
 )
 
 // Register consumers ONLY
-orderConsumer := tonica.NewConsumer(
-tonica.WithConsumerName("order-consumer"),
-tonica.WithTopic("orders"),
-tonica.WithConsumerGroup("order-processors"),
-tonica.WithHandler(processOrder),
+c := consumer.NewConsumer(
+    consumer.WithName("order-consumer"),
+    consumer.WithTopic("orders"),
+    consumer.WithConsumerGroup("order-processors"),
+    consumer.WithClient(kafkaClient),
+    consumer.WithHandler(func(ctx context.Context, msg *pubsub.Message) error {
+        return processOrder(ctx, msg)
+    }),
 )
 
-app.GetRegistry().MustRegisterConsumer(orderConsumer)
+app.GetRegistry().MustRegisterConsumer(c)
 
 // Run in Consumer mode
-err := app.Run(context.Background(), tonica.ModeConsumer)
+err := app.Run()
 ```
 
 **When to Use:**
@@ -383,9 +447,19 @@ resources:
 **Example:**
 
 ```go
+import (
+    "github.com/gin-gonic/gin"
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+)
+
 app := tonica.NewApp(
-    tonica.WithName("myservice-gateway"),
     tonica.WithSpec("openapi/spec.json"),
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeGateway),
+        ),
+    ),
 )
 
 // Don't register services directly - gateway proxies to external gRPC servers
@@ -397,7 +471,7 @@ tonica.NewRoute(app).
     })
 
 // Run in Gateway mode
-err := app.Run(context.Background(), tonica.ModeGateway)
+err := app.Run()
 ```
 
 **When to Use:**
@@ -583,45 +657,103 @@ services:
 
 ```bash
 # Set run mode via environment
-export RUN_MODE="service"
+export APP_MODE="service"
+```
 
-# In your code, read from environment
-mode := os.Getenv("RUN_MODE")
-if mode == "" {
-    mode = "aio"  # Default
-}
+```go
+import (
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+)
 
-app.Run(context.Background(), tonica.Mode(mode))
+// In your code, read from environment
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(
+                config.GetEnv("APP_MODE", config.ModeAIO), // Read from env with default
+            ),
+        ),
+    ),
+)
+
+err := app.Run()
 ```
 
 ### Via Code
 
 ```go
+import (
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+)
+
 // Hardcode the mode
-app.Run(context.Background(), tonica.ModeService)
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeService),
+        ),
+    ),
+)
+
+err := app.Run()
 ```
 
 ### Via Command Line Flag
 
 ```go
-func main() {
-mode := flag.String("mode", "aio", "Run mode: aio, service, worker, consumer, gateway")
-flag.Parse()
+import (
+    "flag"
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+)
 
-app := tonica.NewApp()
-app.Run(context.Background(), tonica.Mode(*mode))
+func main() {
+    mode := flag.String("mode", config.ModeAIO, "Run mode: aio, service, worker, consumer, gateway")
+    flag.Parse()
+
+    app := tonica.NewApp(
+        tonica.WithConfig(
+            config.NewConfig(
+                config.WithRunMode(*mode),
+            ),
+        ),
+    )
+
+    err := app.Run()
+    if err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
 ## Graceful Shutdown in All Modes
 
-All modes support graceful shutdown:
+All modes support graceful shutdown (handled internally by the framework):
 
 ```go
-ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-defer cancel()
+import (
+    "context"
+    "os"
+    "os/signal"
+    "syscall"
 
-err := app.Run(ctx, tonica.ModeAio)
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+)
+
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeAIO),
+        ),
+    ),
+)
+
+// Graceful shutdown is handled automatically by the framework
+// It listens for SIGINT/SIGTERM signals
+err := app.Run()
 ```
 
 **Shutdown Behavior by Mode:**
@@ -692,21 +824,45 @@ c.JSON(200, health)
 ### ❌ Registering Wrong Components
 
 ```go
-// DON'T: Register workers in Service mode
-app := tonica.NewApp()
-worker := tonica.NewWorker(...)
-app.GetRegistry().MustRegisterWorker("worker", worker)
-app.Run(ctx, tonica.ModeService) // Worker won't start!
+import (
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/worker"
+)
+
+// DON'T: Register workers when running in Service mode
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeService),
+        ),
+    ),
+)
+w := worker.NewWorker(...)
+app.GetRegistry().MustRegisterWorker(w)
+err := app.Run() // Worker won't start in Service mode!
 ```
 
 ### ✅ Register Appropriate Components
 
 ```go
-// DO: Only register services in Service mode
-app := tonica.NewApp()
-svc := tonica.NewService(...)
+import (
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/service"
+)
+
+// DO: Only register services when running in Service mode
+app := tonica.NewApp(
+    tonica.WithConfig(
+        config.NewConfig(
+            config.WithRunMode(config.ModeService),
+        ),
+    ),
+)
+svc := service.NewService(...)
 app.GetRegistry().MustRegisterService(svc)
-app.Run(ctx, tonica.ModeService) // Correct!
+err := app.Run() // Correct!
 ```
 
 ### ❌ Port Conflicts
@@ -730,31 +886,52 @@ services:
 ## Advanced: Dynamic Mode Selection
 
 ```go
+import (
+    "os"
+
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/service"
+    "github.com/tonica-go/tonica/pkg/tonica/worker"
+    "github.com/tonica-go/tonica/pkg/tonica/consumer"
+)
+
 func main() {
-mode := os.Getenv("RUN_MODE")
+    mode := config.GetEnv("APP_MODE", config.ModeAIO)
 
-app := tonica.NewApp()
+    app := tonica.NewApp(
+        tonica.WithConfig(
+            config.NewConfig(
+                config.WithRunMode(mode),
+            ),
+        ),
+    )
 
-// Register all components
-svc := tonica.NewService(...)
-worker := tonica.NewWorker(...)
-consumer := tonica.NewConsumer(...)
+    // Create components
+    svc := service.NewService(...)
+    w := worker.NewWorker(...)
+    c := consumer.NewConsumer(...)
 
-// Register based on mode
-switch mode {
-case "service":
-app.GetRegistry().MustRegisterService(svc)
-case "worker":
-app.GetRegistry().MustRegisterWorker("worker", worker)
-case "consumer":
-app.GetRegistry().MustRegisterConsumer(consumer)
-default: // "aio"
-app.GetRegistry().MustRegisterService(svc)
-app.GetRegistry().MustRegisterWorker("worker", worker)
-app.GetRegistry().MustRegisterConsumer(consumer)
-}
+    // Register based on mode
+    switch mode {
+    case config.ModeService:
+        app.GetRegistry().MustRegisterService(svc)
+    case config.ModeWorker:
+        app.GetRegistry().MustRegisterWorker(w)
+    case config.ModeConsumer:
+        app.GetRegistry().MustRegisterConsumer(c)
+    case config.ModeGateway:
+        // No components needed for gateway
+    default: // config.ModeAIO
+        app.GetRegistry().MustRegisterService(svc)
+        app.GetRegistry().MustRegisterWorker(w)
+        app.GetRegistry().MustRegisterConsumer(c)
+    }
 
-app.Run(context.Background(), tonica.Mode(mode))
+    err := app.Run()
+    if err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 

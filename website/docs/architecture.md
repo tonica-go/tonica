@@ -86,7 +86,7 @@ The `App` struct is the heart of Tonica. It manages the application lifecycle an
 type App struct {
     Name           string
     cfg            *config.Config
-    logger         *slog.Logger
+    logger         *log.Logger      // Standard logger
     router         *gin.Engine      // HTTP router
     metricRouter   *gin.Engine      // Metrics endpoint
     metricsManager *metrics.Manager
@@ -357,9 +357,14 @@ Uses Go's standard `log/slog` for structured logging.
 
 **Usage:**
 ```go
-logger := app.GetLogger()
-logger.Info("User created", "user_id", userID, "email", email)
-logger.Error("Failed to process order", "order_id", orderID, "error", err)
+import "log/slog"
+
+// Use slog for structured logging
+slog.Info("User created", "user_id", userID, "email", email)
+slog.Error("Failed to process order", "order_id", orderID, "error", err)
+
+// Or use app's logger (*log.Logger)
+app.GetLogger().Printf("User created: %s", userID)
 ```
 
 ### 8. Shutdown Coordinator
@@ -595,9 +600,11 @@ Automatically handled by framework:
 ### Layer 3: Infrastructure Errors
 Database, Redis, etc.:
 ```go
+import "log/slog"
+
 user, err := db.GetUser(ctx, userID)
 if err != nil {
-    logger.Error("Failed to get user", "error", err, "user_id", userID)
+    slog.Error("Failed to get user", "error", err, "user_id", userID)
     return nil, status.Error(codes.Internal, "database error")
 }
 ```
