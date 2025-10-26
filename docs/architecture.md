@@ -709,7 +709,7 @@ Built-in CORS support:
 # No configuration needed
 
 # Restrict origins
-export PS_CORS_ORIGINS="https://myapp.com,https://api.myapp.com"
+export APP_CORS_ORIGINS="https://myapp.com,https://api.myapp.com"
 ```
 
 ### TLS/HTTPS

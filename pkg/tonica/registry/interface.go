@@ -13,21 +13,36 @@ type Registry interface {
 	MustRegisterService(item *service.Service)
 	GetService(name string) (*service.Service, error)
 	GetAllServices() ([]*service.Service, error)
+	GetCountServices() int
 
 	RegisterWorker(name string, item *worker.Worker) error
 	GetWorker(name string) (*worker.Worker, error)
 	GetAllWorkers() ([]*worker.Worker, error)
+	GetCountWorkers() int
 
 	RegisterConsumer(name string, item *consumer.Consumer) error
 	MustRegisterConsumer(item *consumer.Consumer)
 	GetConsumer(name string) (*consumer.Consumer, error)
 	GetAllConsumers() ([]*consumer.Consumer, error)
+	GetCountConsumers() int
 }
 
 type AppRegistry struct {
 	services  map[string]*service.Service
 	workers   map[string]*worker.Worker
 	consumers map[string]*consumer.Consumer
+}
+
+func (r *AppRegistry) GetCountConsumers() int {
+	return len(r.consumers)
+}
+
+func (r *AppRegistry) GetCountServices() int {
+	return len(r.services)
+}
+
+func (r *AppRegistry) GetCountWorkers() int {
+	return len(r.workers)
 }
 
 func (r *AppRegistry) RegisterService(item *service.Service) error {

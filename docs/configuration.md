@@ -113,7 +113,7 @@ Configure Cross-Origin Resource Sharing:
 # No configuration needed
 
 # Restrict to specific origins
-export PS_CORS_ORIGINS="https://myapp.com,https://admin.myapp.com"
+export APP_CORS_ORIGINS="https://myapp.com,https://admin.myapp.com"
 ```
 
 **Default:** Allows all origins
@@ -680,7 +680,7 @@ export TEMPORAL_HOST="temporal.prod:7233"
 export TEMPORAL_NAMESPACE="production"
 
 # CORS
-export PS_CORS_ORIGINS="https://myapp.com,https://admin.myapp.com"
+export APP_CORS_ORIGINS="https://myapp.com,https://admin.myapp.com"
 
 # Logging
 export LOG_LEVEL="info"

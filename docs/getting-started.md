@@ -4,7 +4,7 @@ This guide will help you create your first Tonica application in just a few minu
 
 ## Prerequisites
 
-- Go 1.21 or higher
+- Go 1.25 or higher
 - Protocol Buffers compiler (`protoc`)
 - Buf CLI (recommended for proto management)
 - Docker (optional, for running dependencies)
@@ -43,7 +43,7 @@ option go_package = "github.com/yourusername/myservice/proto/hello/v1;hellov1";
 service HelloService {
   rpc SayHello(SayHelloRequest) returns (SayHelloResponse) {
     option (google.api.http) = {
-      post: "/api/v1/hello"
+      post: "/v1/hello"
       body: "*"
     };
   }
@@ -150,7 +150,7 @@ go run main.go
 Your service is now running! 🎉
 
 - **gRPC**: `localhost:50051`
-- **REST API**: `http://localhost:8080/api/v1/hello`
+- **REST API**: `http://localhost:8080/v1/hello`
 - **OpenAPI UI**: `http://localhost:8080/docs`
 - **OpenAPI Spec**: `http://localhost:8080/openapi.json`
 - **Metrics**: `http://localhost:9090/metrics`
@@ -160,7 +160,7 @@ Your service is now running! 🎉
 Test with REST:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/hello \
+curl -X POST http://localhost:8080/v1/hello \
   -H "Content-Type: application/json" \
   -d '{"name": "World"}'
 ```

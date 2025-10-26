@@ -71,7 +71,7 @@ The `APP_MODE` environment variable can override the mode, for example: `APP_MOD
 ## HTTP and REST gateway
 
 - The application HTTP server listens on `APP_HTTP_ADDR` (defaults to `:8080`).
-- CORS is open by default; allowed origins can be set via `PS_CORS_ORIGINS` (comma-separated).
+- CORS is open by default; allowed origins can be set via `APP_CORS_ORIGINS` (comma-separated).
 - The REST gateway proxies to gRPC on `/v1/*` and forwards headers `authorization`, `traceparent`, `tracestate`, `x-request-id`.
 - Documentation is available at `/docs` when `tonica.WithSpec(".../openapi.swagger.json")` is provided.
 
@@ -106,7 +106,7 @@ The `APP_MODE` environment variable can override the mode, for example: `APP_MOD
 - `OTEL_EXPORTER_OTLP_ENDPOINT` — OTLP endpoint for tracing.
 - `LOG_LEVEL` — `debug|info|warn|error`.
 - `PS_APP_ENV` — logging format (`local` — text output).
-- `PS_CORS_ORIGINS` — allowed CORS origins (comma-separated).
+- `APP_CORS_ORIGINS` — allowed CORS origins (comma-separated).
 
 ## Technologies
 

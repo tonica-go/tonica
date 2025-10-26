@@ -143,7 +143,7 @@ func TestBuildCORSConfig(t *testing.T) {
 	})
 
 	t.Run("should parse custom origins from env", func(t *testing.T) {
-		t.Setenv("PS_CORS_ORIGINS", "http://localhost:3000, https://example.com")
+		t.Setenv("APP_CORS_ORIGINS", "http://localhost:3000, https://example.com")
 
 		cfg := buildCORSConfig()
 
