@@ -21,7 +21,6 @@ const config: Config = {
   projectName: 'tonica',
 
   onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
 
   // Internationalization
   i18n: {
@@ -154,6 +153,9 @@ const config: Config = {
 
   markdown: {
     mermaid: true,
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
   },
   themes: [
     '@docusaurus/theme-mermaid',
