@@ -18,6 +18,7 @@ const (
 	ModeService  = "service"
 	ModeWorker   = "worker"
 	ModeConsumer = "consumer"
+	ModeGateway  = "gateway"
 )
 
 type Config struct {

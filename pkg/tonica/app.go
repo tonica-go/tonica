@@ -7,10 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
-	"slices"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/MarceloPetrucio/go-scalar-api-reference"
@@ -42,6 +39,7 @@ type App struct {
 	metricRouter *gin.Engine
 
 	metricsManager metrics.Manager
+	shutdown       *Shutdown
 }
 
 func NewApp(options ...AppOption) *App {
@@ -53,6 +51,7 @@ func NewApp(options ...AppOption) *App {
 		metricsManager: metrics.NewMetricsManager(exporters.Prometheus("aoo", "0.0.0")),
 		router:         gin.New(),
 		metricRouter:   gin.New(),
+		shutdown:       NewShutdown(),
 	}
 
 	for _, option := range options {
@@ -94,30 +93,7 @@ func initObs(ctx context.Context, service string) (*obs.Observability, error) {
 	})
 }
 
-func (a *App) runAio() {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	// Observability
-	o, err := initObs(ctx, a.cfg.AppName())
-	if err != nil {
-		a.logger.Fatal(err)
-	}
-	defer func() { _ = o.Shutdown(context.Background()) }()
-
-	workers, err := a.GetRegistry().GetAllWorkers()
-	if err != nil {
-		a.GetLogger().Fatal(err)
-	}
-	consumers, err := a.GetRegistry().GetAllConsumers()
-	if err != nil {
-		a.GetLogger().Fatal(err)
-	}
-	services, err := a.GetRegistry().GetAllServices()
-	if err != nil {
-		a.GetLogger().Fatal(err)
-	}
-
+func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 	gwmux := runtime.NewServeMux(
 		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
 			// Forward selected headers to gRPC metadata
@@ -134,7 +110,164 @@ func (a *App) runAio() {
 		obs.GRPCClientStats(),
 	}
 
-	errCh := make(chan error, len(services))
+	services, err := a.GetRegistry().GetAllServices()
+	if err != nil {
+		a.GetLogger().Fatal(err)
+	}
+	for _, service := range services {
+		if service.GetIsGatewayEnabled() {
+			registerGw := service.GetGateway()
+			if err := registerGw(ctx, gwmux, service.GetGRPCAddr(), dialOpts); err != nil {
+				a.GetLogger().Fatal(err)
+			}
+		}
+	}
+
+	return gwmux
+}
+
+func (a *App) registerMetrics(_ context.Context) {
+	router := a.metricRouter
+
+	router.Use(gin.Recovery())
+	router.Use(obs.HTTPLogger())
+	metrics.GetHandler(a.GetMetricManager(), router)
+
+	router.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "ok",
+			"now":    time.Now().UTC().Format(time.RFC3339),
+		})
+	})
+	router.GET("/readyz", func(c *gin.Context) {
+		//results, overall := ReadinessChecks(c.Request.Context(), opts.Infra)
+		code := http.StatusOK
+		//if !overall {
+		//	code = http.StatusServiceUnavailable
+		//}
+		//todo need to add ready checks for services, consumers, workers, gateway
+		c.JSON(code, gin.H{
+			"status": func() string {
+				//if overall {
+				//	return "ok"
+				//}
+				return "degraded"
+			}(),
+			"now":    time.Now().UTC().Format(time.RFC3339),
+			"checks": "results",
+		})
+	})
+
+	addr := config.GetEnv("APP_METRIC_ADDR", ":2121")
+	a.GetLogger().Println("metrics server running, listening addr", addr)
+	router.Run(addr)
+}
+
+func (a *App) registerAPI(ctx context.Context) {
+
+	router := a.router
+
+	router.Use(gin.Recovery())
+	router.Use(otelgin.Middleware(a.Name + "-http"))
+	router.Use(obs.RequestID())
+	router.Use(obs.HTTPLogger())
+	router.Use(cors.New(buildCORSConfig()))
+
+	if a.spec != "" {
+		specContent := func() ([]byte, error) {
+			specBytes, err := os.ReadFile(a.spec)
+			if err != nil {
+				a.GetLogger().Printf("failed to read spec file %s: %v", a.spec, err)
+				//c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read spec file"})
+				return nil, err
+			}
+
+			// Merge custom routes into the spec
+			mergedSpec, err := mergeCustomRoutesIntoSpec(specBytes, a.customRoutes)
+			if err != nil {
+				a.GetLogger().Printf("failed to merge custom routes: %v", err)
+				//c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to merge custom routes"})
+				return nil, err
+			}
+
+			return mergedSpec, nil
+		}
+
+		// Serve merged OpenAPI spec with custom routes at /openapi.json
+		router.GET("/openapi.json", func(c *gin.Context) {
+			specBytes, err := specContent()
+			if err != nil {
+				a.GetLogger().Printf("failed to read spec file %s: %v", a.spec, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read spec file"})
+				return
+			}
+
+			c.Data(http.StatusOK, "application/json", specBytes)
+		})
+	}
+	if a.specUrl != "" {
+
+		docs := func(w http.ResponseWriter, r *http.Request) {
+			htmlContent, err := scalar.ApiReferenceHTML(&scalar.Options{
+				SpecURL:  a.specUrl,
+				DarkMode: true,
+			})
+
+			if err != nil {
+				fmt.Printf("%v", err)
+			}
+
+			_, err = fmt.Fprintln(w, htmlContent)
+			if err != nil {
+				a.GetLogger().Fatal(err)
+			}
+		}
+
+		router.GET("/docs", gin.WrapF(docs))
+	}
+
+	router.Any("/v1/*any", gin.WrapH(a.registerGateway(ctx)))
+
+	addr := config.GetEnv("APP_HTTP_ADDR", ":8080")
+	a.GetLogger().Println("http server running, listening addr", addr)
+	router.Run(addr)
+}
+
+func (a *App) registerConsumers(ctx context.Context) {
+	consumers, err := a.GetRegistry().GetAllConsumers()
+	if err != nil {
+		a.GetLogger().Fatal(err)
+	}
+	for _, consumer := range consumers {
+		go func() {
+			err := consumer.Start(ctx)
+			if err != nil {
+				a.GetLogger().Fatal(err)
+			}
+		}()
+	}
+}
+
+func (a *App) registerWorkers(_ context.Context) {
+	workers, err := a.GetRegistry().GetAllWorkers()
+	if err != nil {
+		a.GetLogger().Fatal(err)
+	}
+	for _, w := range workers {
+		go func() {
+			err := w.Start()
+			if err != nil {
+				a.GetLogger().Fatal(err)
+			}
+		}()
+	}
+}
+
+func (a *App) registerServices(_ context.Context, errCh chan error) {
+	services, err := a.GetRegistry().GetAllServices()
+	if err != nil {
+		a.GetLogger().Fatal(err)
+	}
 	for _, service := range services {
 		var grpcSrv *grpc.Server
 		var grpcLis net.Listener
@@ -156,203 +289,75 @@ func (a *App) runAio() {
 			),
 		)
 
+		// Register gRPC server for graceful shutdown
+		a.shutdown.RegisterGRPCServer(grpcSrv)
+
 		srvGrpc(grpcSrv, service)
-		if service.GetIsGatewayEnabled() {
-			registerGw := service.GetGateway()
-			if err := registerGw(ctx, gwmux, service.GetGRPCAddr(), dialOpts); err != nil {
-				a.GetLogger().Fatal(err)
-			}
-		}
-		go func() {
-			a.GetLogger().Println("gRPC listening", "addr", service.GetGRPCAddr())
-			if err := grpcSrv.Serve(grpcLis); err != nil {
+
+		go func(srv *grpc.Server, addr string) {
+			a.GetLogger().Println("gRPC listening", "addr", addr)
+			if err := srv.Serve(grpcLis); err != nil {
 				errCh <- err
 			}
-		}()
-
+		}(grpcSrv, service.GetGRPCAddr())
 	}
+}
 
-	go func() {
-		router := a.metricRouter
-
-		router.Use(gin.Recovery())
-		router.Use(obs.HTTPLogger())
-		metrics.GetHandler(a.GetMetricManager(), router)
-
-		router.GET("/healthz", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"status": "ok",
-				"now":    time.Now().UTC().Format(time.RFC3339),
-			})
-		})
-		router.GET("/readyz", func(c *gin.Context) {
-			//results, overall := ReadinessChecks(c.Request.Context(), opts.Infra)
-			code := http.StatusOK
-			//if !overall {
-			//	code = http.StatusServiceUnavailable
-			//}
-			c.JSON(code, gin.H{
-				"status": func() string {
-					//if overall {
-					//	return "ok"
-					//}
-					return "degraded"
-				}(),
-				"now":    time.Now().UTC().Format(time.RFC3339),
-				"checks": "results",
-			})
-		})
-
-		addr := config.GetEnv("APP_METRIC_ADDR", ":2121")
-		a.GetLogger().Println("metrics server running, listening addr", addr)
-		router.Run(addr)
-	}()
-
-	go func() {
-		router := a.router
-
-		router.Use(gin.Recovery())
-		router.Use(otelgin.Middleware(a.Name + "-http"))
-		router.Use(obs.RequestID())
-		router.Use(obs.HTTPLogger())
-		router.Use(cors.New(buildCORSConfig()))
-
-		if a.spec != "" {
-			specContent := func() ([]byte, error) {
-				specBytes, err := os.ReadFile(a.spec)
-				if err != nil {
-					a.GetLogger().Printf("failed to read spec file %s: %v", a.spec, err)
-					//c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read spec file"})
-					return nil, err
-				}
-
-				// Merge custom routes into the spec
-				mergedSpec, err := mergeCustomRoutesIntoSpec(specBytes, a.customRoutes)
-				if err != nil {
-					a.GetLogger().Printf("failed to merge custom routes: %v", err)
-					//c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to merge custom routes"})
-					return nil, err
-				}
-
-				return mergedSpec, nil
-			}
-
-			// Serve merged OpenAPI spec with custom routes at /openapi.json
-			router.GET("/openapi.json", func(c *gin.Context) {
-				specBytes, err := specContent()
-				if err != nil {
-					a.GetLogger().Printf("failed to read spec file %s: %v", a.spec, err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read spec file"})
-					return
-				}
-
-				c.Data(http.StatusOK, "application/json", specBytes)
-			})
-		}
-		if a.specUrl != "" {
-
-			docs := func(w http.ResponseWriter, r *http.Request) {
-				htmlContent, err := scalar.ApiReferenceHTML(&scalar.Options{
-					SpecURL:  a.specUrl,
-					DarkMode: true,
-				})
-
-				if err != nil {
-					fmt.Printf("%v", err)
-				}
-
-				_, err = fmt.Fprintln(w, htmlContent)
-				if err != nil {
-					a.GetLogger().Fatal(err)
-				}
-			}
-
-			router.GET("/docs", gin.WrapF(docs))
-		}
-
-		router.Any("/v1/*any", gin.WrapH(gwmux))
-
-		addr := config.GetEnv("APP_HTTP_ADDR", ":8080")
-		a.GetLogger().Println("http server running, listening addr", addr)
-		router.Run(addr)
-	}()
-
-	for _, consumer := range consumers {
-		go func() {
-			err := consumer.Start(ctx)
-			if err != nil {
-				a.GetLogger().Fatal(err)
-			}
-		}()
-	}
-
-	for _, w := range workers {
-		go func() {
-			err := w.Start()
-			if err != nil {
-				a.GetLogger().Fatal(err)
-			}
-		}()
-	}
-
+func (a *App) run(ctx context.Context, errCh chan error) {
 	select {
 	case <-ctx.Done():
-		a.GetLogger().Println("context canceled")
-		os.Exit(1)
+		a.GetLogger().Println("shutdown signal received, starting graceful shutdown...")
+
+		// Graceful shutdown with 30 second timeout
+		if err := a.shutdown.Execute(30 * time.Second); err != nil {
+			a.GetLogger().Printf("graceful shutdown error: %v", err)
+		}
+
+		a.GetLogger().Println("shutdown complete")
+		return
 	case err := <-errCh:
 		a.GetLogger().Fatal(err)
 	}
 }
 
-func (a *App) runService() {
-	ctx := context.Background()
-	services, err := a.GetRegistry().GetAllServices()
-	if err != nil {
-		a.GetLogger().Fatal(err)
-	}
-	cnt := 0
-	for _, service := range services {
-		if !slices.Contains(a.cfg.Services(), service.GetName()) {
-			continue
-		}
-		cnt++
-	}
+const gatewayCount = 1
 
-	errCh := make(chan error, cnt)
-	for _, service := range services {
-		if !slices.Contains(a.cfg.Services(), service.GetName()) {
-			continue
-		}
-		var grpcSrv *grpc.Server
-		var grpcLis net.Listener
-		srvGrpc := service.GetGRPC()
+func (a *App) runAio(ctx context.Context) {
+	go a.registerMetrics(ctx)
+	go a.registerAPI(ctx)
+	go a.registerWorkers(ctx)
+	go a.registerConsumers(ctx)
+	errCh := make(chan error, gatewayCount+a.GetRegistry().GetCountWorkers()+a.GetRegistry().GetCountConsumers()+a.GetRegistry().GetCountServices()+a.GetRegistry().GetCountServices())
+	a.registerServices(ctx, errCh)
+	a.run(ctx, errCh)
+}
 
-		grpcLis, err = net.Listen("tcp", service.GetGRPCAddr())
-		if err != nil {
-			a.GetLogger().Fatal(err)
-		}
-		grpcSrv = grpc.NewServer(
-			grpc.ChainUnaryInterceptor(),
-			grpc.ChainStreamInterceptor(),
-		)
+func (a *App) runService(ctx context.Context) {
+	go a.registerMetrics(ctx)
+	errCh := make(chan error, a.GetRegistry().GetCountServices())
+	a.registerServices(ctx, errCh)
+	a.run(ctx, errCh)
+}
 
-		srvGrpc(grpcSrv, service)
-		go func() {
-			a.GetLogger().Println("gRPC listening", "addr", service.GetGRPCAddr())
-			if err := grpcSrv.Serve(grpcLis); err != nil {
-				errCh <- err
-			}
-		}()
+func (a *App) runWorker(ctx context.Context) {
+	go a.registerMetrics(ctx)
+	go a.registerWorkers(ctx)
+	errCh := make(chan error, a.GetRegistry().GetCountWorkers())
+	a.run(ctx, errCh)
+}
 
-	}
+func (a *App) runConsumer(ctx context.Context) {
+	go a.registerMetrics(ctx)
+	go a.registerConsumers(ctx)
+	errCh := make(chan error, a.GetRegistry().GetCountConsumers())
+	a.run(ctx, errCh)
+}
 
-	select {
-	case <-ctx.Done():
-		a.GetLogger().Println("context canceled")
-		os.Exit(1)
-	case err := <-errCh:
-		a.GetLogger().Fatal(err)
-	}
+func (a *App) runGateway(ctx context.Context) {
+	go a.registerMetrics(ctx)
+	go a.registerAPI(ctx)
+	errCh := make(chan error, gatewayCount)
+	a.run(ctx, errCh)
 }
 
 func (a *App) registerFrameworkMetrics() {
@@ -398,7 +403,7 @@ func buildCORSConfig() cors.Config {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}
-	if v := strings.TrimSpace(os.Getenv("PS_CORS_ORIGINS")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("APP_CORS_ORIGINS")); v != "" {
 		cfg.AllowAllOrigins = false
 		cfg.AllowOrigins = splitAndTrim(v)
 	}

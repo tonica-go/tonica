@@ -1,147 +1,128 @@
 # Tonica framework
 
-> ### ВСЕ ЕЩЕ В РАЗРАБОТКЕ! 
-> Не готово для полноценного использования.
+> ## Still in development!
+> Not ready for full production use.
 
 
-ToDo:
+<img alt="tonica mascot" src="tonica-gofer.webp" />
 
-- [ ] Консьюмеры (kafka, pubsub)
-- [ ] Темпорал воркеры
-- [ ] Коннекторы к БД (bun, sqlc)
-- [ ] Миграции (bun)
-- [ ] Редис
-- [ ] Рейтлимитер
-- [ ] GCS, S3 клиенты
-- [ ] Аутентификация
-- [ ] Документация
-- [ ] Примеры
-- [ ] air
-- [ ] Docker
-- [ ] Helm
-- [ ] Compose
+Inspired by gofr.dev. Tonica is a lightweight Go framework for service-oriented architecture. It lets you run multiple microservices in a single binary (AIO) for local development and preview, as well as run them in isolation for production and scaling.
 
+The code is split into clear components (services, registry, observability, metrics) so projects remain readable and extensible.
 
+## Features
 
-<img alt="tonica mascot" src="docs/tonica-gofer.webp" />
+- HTTP API powered by `gin`
+- gRPC services with observability enabled
+- Automatic REST gateway for gRPC via `grpc-gateway` (`/v1/*`)
+- `/docs` API documentation from an OpenAPI spec (`tonica.WithSpec`)
+- Separate HTTP server for metrics and profiling (`/metrics`, pprof)
+- Built-in metrics and tracing (Prometheus, OpenTelemetry)
+- Register and run multiple services via a single registry
+- CLI tool to generate glue code from `.proto`
 
-Вдохновлено gofr.dev. Tonica — легкий фреймворк на Go для сервисной архитектуры. Он позволяет запускать несколько микросервисов в одном бинаре (AIO) для локальной разработки и предпросмотра, а также изолированно — для продакшена и масштабирования.
+## Installation
 
-Код разделен на четкие компоненты (сервисы, реестр, наблюдаемость, метрики), поэтому проекты остаются читаемыми и расширяемыми.
+- Requires Go `1.25`.
+- Add the module: `go get github.com/tonica-go/tonica@latest`.
 
-## Возможности
+## How it works
 
-- HTTP API на базе `gin`
-- gRPC‑сервисы с включенной наблюдаемостью
-- Автоматический REST‑шлюз для gRPC через `grpc-gateway` (`/v1/*`)
-- Документация `/docs` из OpenAPI‑спеки (`tonica.WithSpec`)
-- Отдельный HTTP сервер метрик и профайлинга (`/metrics`, pprof)
-- Встроенные метрики и трассировка (Prometheus, OpenTelemetry)
-- Регистрация и запуск нескольких сервисов через единый реестр
-- CLI‑утилита для генерации обвязки по `.proto`
+The architecture centers around `App`, `Registry`, and service definitions:
 
-## Установка
+- `App` — the runtime shell: HTTP, gRPC, metrics, tracing.
+- `Registry` — stores registered services, workers, and consumers.
+- `service.Service` — describes a specific service: name, gRPC registrar, address, optional REST gateway.
 
-- Требуется Go `1.25`.
-- Подключить модуль: `go get github.com/tonica-go/tonica@latest`.
+In AIO mode Tonica starts:
 
-## Как это работает
+- A gRPC server for each service (address is set on the service),
+- The application HTTP server: `/v1/*` (REST gateway to gRPC), `/docs` (if a spec is provided),
+- A separate HTTP server for metrics: `/metrics`, `/healthz`, `/readyz`, and pprof.
 
-Архитектура строится вокруг `App`, `Registry` и описаний сервисов:
+See the working example: `example/dev/main.go:1`,
+service implementations: `example/dev/services/payment/service.go:1`, `example/dev/services/report/service.go:1`.
 
-- `App` — оболочка запуска: HTTP, gRPC, метрики, трассировка.
-- `Registry` — хранит зарегистрированные сервисы, воркеры и консьюмеры.
-- `service.Service` — описание конкретного сервиса: имя, gRPC‑регистратор, адрес, опциональный REST‑шлюз.
+## Quick start
 
-В AIO‑режиме Tonica поднимает:
+1) Create an `App` and its configuration:
+- `config.WithRunMode("aio"|"service"|"worker"|"consumer")` — run mode (defaults to `aio`).
+- `config.WithServices([]string{"paymentservice-service"})` — services list for `service` mode.
+- `tonica.WithSpec("path/to/openapi.json")` — enable `/docs` (optional).
 
-- gRPC сервер(а) для каждого сервиса (адрес задается на сервисе),
-- HTTP сервер приложение: `/v1/*` (REST‑шлюз к gRPC), `/docs` (если задана спека),
-- отдельный HTTP сервер метрик: `/metrics`, `/healthz`, `/readyz`, pprof.
+2) Register services in the registry:
+- `service.WithName(paymentv1.ServiceName)` — unique name (generated from `.proto`).
+- `service.WithGRPC(payment.RegisterGRPC)` — function that registers gRPC endpoints on `*grpc.Server`.
+- `service.WithGRPCAddr(":9000")` — service's gRPC server address.
+- `service.WithGateway(payment.RegisterGateway)` — register the REST gateway (if HTTP access is needed).
 
-Смотрите рабочий пример: `example/dev/main.go:1`,
-реализации сервисов: `example/dev/services/payment/service.go:1`, `example/dev/services/report/service.go:1`.
+3) Run the application: `app.Run()`.
 
-## Быстрый старт
+A minimal reproducible example is in `example/dev`.
 
-1) Создайте `App` и конфигурацию:
-- `config.WithRunMode("aio"|"service"|"worker"|"consumer")` — режим работы (по умолчанию `aio`).
-- `config.WithServices([]string{"paymentservice-service"})` — список сервисов для режима `service`.
-- `tonica.WithSpec("path/to/openapi.json")` — подключить `/docs` (опционально).
+## Run modes
 
-2) Зарегистрируйте сервисы в реестре:
-- `service.WithName(paymentv1.ServiceName)` — уникальное имя (генерируется из `.proto`).
-- `service.WithGRPC(payment.RegisterGRPC)` — функция, которая регистрирует gRPC эндпоинты в `*grpc.Server`.
-- `service.WithGRPCAddr(":9000")` — адрес gRPC сервера сервиса.
-- `service.WithGateway(payment.RegisterGateway)` — регистрация REST‑шлюза (если нужен HTTP доступ).
+- `aio` — all services + HTTP gateway + metrics in a single process.
+- `service` — only services specified by `config.WithServices` or the `APP_SERVICES` env var (comma-separated) are started.
+- `worker`, `consumer` — stubs for Temporal/streaming (work in progress).
 
-3) Запустите приложение: `app.Run()`.
+The `APP_MODE` environment variable can override the mode, for example: `APP_MODE=service`.
 
-Минимально воспроизводимый пример есть в `example/dev`.
+## HTTP and REST gateway
 
-## Режимы запуска
-
-- `aio` — все сервисы + HTTP‑шлюз + метрики в одном процессе.
-- `service` — поднимаются только сервисы, перечисленные в `config.WithServices` или переменной окружения `APP_SERVICES` (через запятую).
-- `worker`, `consumer` — заготовки под Temporal/стриминг (в разработке).
-
-Переменная окружения `APP_MODE` может переопределить режим, например: `APP_MODE=service`.
-
-## HTTP и REST‑шлюз
-
-- HTTP‑сервер приложения слушает `APP_HTTP_ADDR` (по умолчанию `:8080`).
-- CORS по умолчанию открыт; можно задать разрешенные источники через `PS_CORS_ORIGINS` (через запятую).
-- REST‑шлюз проксирует в gRPC на `/v1/*` и пробрасывает заголовки `authorization`, `traceparent`, `tracestate`, `x-request-id`.
-- Документация доступна по `/docs`, если задан `tonica.WithSpec(".../openapi.swagger.json")`.
+- The application HTTP server listens on `APP_HTTP_ADDR` (defaults to `:8080`).
+- CORS is open by default; allowed origins can be set via `APP_CORS_ORIGINS` (comma-separated).
+- The REST gateway proxies to gRPC on `/v1/*` and forwards headers `authorization`, `traceparent`, `tracestate`, `x-request-id`.
+- Documentation is available at `/docs` when `tonica.WithSpec(".../openapi.swagger.json")` is provided.
 
 ## gRPC
 
-- Каждый сервис поднимает собственный gRPC‑сервер на своём адресе (см. `service.WithGRPCAddr`).
-- Генератор обвязки по `.proto` создаёт полезные константы, например `ServiceName` и `ServiceAddrEnvName` для адреса сервиса.
-- Пример сгенерированных файлов: `example/dev/proto/payment/v1/paymentservice_grpc.go:1`.
+- Each service starts its own gRPC server at its address (see `service.WithGRPCAddr`).
+- The `.proto` wrapper generator creates useful constants, for example `ServiceName` and `ServiceAddrEnvName` for the service address.
+- Example generated files: `example/dev/proto/payment/v1/paymentservice_grpc.go:1`.
 
-## Наблюдаемость и метрики
+## Observability and metrics
 
-- Трассировка: задайте `OTEL_EXPORTER_OTLP_ENDPOINT` (gRPC), уровень логов — `LOG_LEVEL` (`debug|info|warn|error`).
-- Логи: `slog` (локально — текст при `PS_APP_ENV=local`, иначе JSON).
-- Метрики и профайлинг: отдельный HTTP‑сервер на `APP_METRIC_ADDR` (по умолчанию `:2121`), ручки `/metrics`, `/healthz`, `/readyz` и pprof.
-- Из коробки регистрируются гистограммы и счётчики для HTTP, gRPC, Redis/SQL и Pub/Sub, например:
+- Tracing: set `OTEL_EXPORTER_OTLP_ENDPOINT` (gRPC). Log level is controlled by `LOG_LEVEL` (`debug|info|warn|error`).
+- Logging: `slog` (text locally when `PS_APP_ENV=local`, otherwise JSON).
+- Metrics and profiling: separate HTTP server on `APP_METRIC_ADDR` (defaults to `:2121`) with `/metrics`, `/healthz`, `/readyz`, and pprof.
+- Out of the box histograms and counters for HTTP, gRPC, Redis/SQL, and Pub/Sub, for example:
   - `app_http_response`, `app_http_service_response`
   - `app_sql_stats`, `app_redis_stats`
   - `app_pubsub_*`
 
-## CLI: генерация кода по .proto
+## CLI: code generation from .proto
 
-- Команда: `go run ./pkg/tonica/cmd/wrap --proto <path/to/service.proto>`.
-- Генерирует рядом с `.proto` вспомогательные файлы для клиента/сервера и конфигурации адресов.
-- В примере уже сгенерированы: `example/dev/proto/payment/v1/paymentservice_grpc.go:1`, `example/dev/proto/reports/v1/reportsservice_grpc.go:1`.
+- Command: `go run ./pkg/tonica/cmd/wrap --proto <path/to/service.proto>`.
+- Generates helper files next to the `.proto` for client/server and address configuration.
+- Already generated in the example: `example/dev/proto/payment/v1/paymentservice_grpc.go:1`, `example/dev/proto/reports/v1/reportsservice_grpc.go:1`.
 
-## Переменные окружения (основные)
+## Environment variables (core)
 
 - `APP_MODE` — `aio|service|worker|consumer`.
-- `APP_HTTP_ADDR` — адрес HTTP‑сервера приложения, по умолчанию `:8080`.
-- `APP_METRIC_ADDR` — адрес сервера метрик, по умолчанию `:2121`.
-- `APP_SERVICES` — список сервисов для режима `service`, например `paymentservice-service,reportsservice-service`.
-- `OTEL_EXPORTER_OTLP_ENDPOINT` — endpoint OTLP для трассировки.
+- `APP_HTTP_ADDR` — application HTTP server address, defaults to `:8080`.
+- `APP_METRIC_ADDR` — metrics server address, defaults to `:2121`.
+- `APP_SERVICES` — services list for `service` mode, e.g. `paymentservice-service,reportsservice-service`.
+- `OTEL_EXPORTER_OTLP_ENDPOINT` — OTLP endpoint for tracing.
 - `LOG_LEVEL` — `debug|info|warn|error`.
-- `PS_APP_ENV` — формат логов (`local` — текстовый).
-- `PS_CORS_ORIGINS` — разрешенные источники CORS (через запятую).
+- `PS_APP_ENV` — logging format (`local` — text output).
+- `APP_CORS_ORIGINS` — allowed CORS origins (comma-separated).
 
-## Технологии
+## Technologies
 
 - `gin`, `grpc`, `grpc-gateway`
 - OpenTelemetry (`otel`), Prometheus
-- Kafka/PubSub, Temporal (подключаемо)
+- Kafka/PubSub, Temporal (pluggable)
 
-## Ограничения
+## Limitations
 
-Фреймворк ориентирован на практичные кейсы сервисной архитектуры и быстрый запуск окружений. Универсальность не была целью; часть направлений (воркеры/консьюмеры) помечены как WIP.
+The framework focuses on practical service-architecture use cases and fast environment bootstrapping. General-purpose universality was not a goal; some areas (workers/consumers) are marked as WIP.
 
 ---
 
-Если хотите, можно начать с примера: `go run example/dev/main.go` и открыть `http://localhost:8080/docs` (при наличии `example/dev/openapi/openapi.swagger.json`).
+You can start with the example: `go run example/dev/main.go` and open `http://localhost:8080/docs` (when `example/dev/openapi/openapi.swagger.json` is present).
 
-Тулинг для локальной разработки
+Local development tooling
 
 ```bash
 brew install buf

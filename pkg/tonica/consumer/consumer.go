@@ -79,12 +79,21 @@ func NewConsumer(options ...Option) *Consumer {
 }
 
 func (c *Consumer) Start(ctx context.Context) error {
-	for msg, err := c.client.Subscribe(ctx, c.topic); err == nil; {
-		err := c.handler(ctx, msg)
-		if err != nil {
-			slog.Error("handling consumer message failed", "err", err.Error())
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("consumer stopping", "name", c.name, "topic", c.topic)
+			return ctx.Err()
+		default:
+			msg, err := c.client.Subscribe(ctx, c.topic)
+			if err != nil {
+				slog.Error("subscribe failed", "topic", c.topic, "err", err.Error())
+				continue
+			}
+
+			if err := c.handler(ctx, msg); err != nil {
+				slog.Error("handling consumer message failed", "topic", c.topic, "err", err.Error())
+			}
 		}
 	}
-
-	return nil
 }

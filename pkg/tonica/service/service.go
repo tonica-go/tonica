@@ -62,11 +62,14 @@ type DB struct {
 }
 
 func (d *DB) GetClient() *bun.DB {
+	if d.db != nil {
+		return d.db
+	}
+
 	if d.driver == Postgres || d.driver == "" {
 		sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(d.dsn)))
-		if d.db == nil {
-			d.db = bun.NewDB(sqldb, pgdialect.New())
-		}
+		d.db = bun.NewDB(sqldb, pgdialect.New())
+		return d.db
 	}
 
 	if d.driver == Mysql {
@@ -74,9 +77,8 @@ func (d *DB) GetClient() *bun.DB {
 		if err != nil {
 			panic(err)
 		}
-		if d.db == nil {
-			d.db = bun.NewDB(sqldb, mysqldialect.New())
-		}
+		d.db = bun.NewDB(sqldb, mysqldialect.New())
+		return d.db
 	}
 
 	if d.driver == Sqlite {
@@ -84,9 +86,8 @@ func (d *DB) GetClient() *bun.DB {
 		if err != nil {
 			panic(err)
 		}
-		if d.db == nil {
-			d.db = bun.NewDB(sqldb, sqlitedialect.New())
-		}
+		d.db = bun.NewDB(sqldb, sqlitedialect.New())
+		return d.db
 	}
 
 	return d.db
@@ -101,7 +102,7 @@ type Redis struct {
 
 func (r *Redis) GetClient() *redis.Client {
 	if r.conn == nil {
-		redis.NewClient(&redis.Options{
+		r.conn = redis.NewClient(&redis.Options{
 			Addr:     r.addr,
 			Password: r.password, // no password set
 			DB:       r.database, // use default DB
