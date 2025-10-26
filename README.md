@@ -4,7 +4,7 @@
 > Not ready for full production use.
 
 
-<img alt="tonica mascot" src="docs/tonica-gofer.webp" />
+<img alt="tonica mascot" src="tonica-gofer.webp" />
 
 Inspired by gofr.dev. Tonica is a lightweight Go framework for service-oriented architecture. It lets you run multiple microservices in a single binary (AIO) for local development and preview, as well as run them in isolation for production and scaling.
 

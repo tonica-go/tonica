@@ -364,71 +364,107 @@ resources:
 
 ### ModeGateway
 
-**Description**: Runs only API gateway
+**Description**: Runs only the HTTP/REST API gateway layer (without gRPC server).
 
 **What Starts:**
 
 - HTTP/REST server (port 8080)
+- gRPC-Gateway (proxies REST requests to backend gRPC services)
+- Custom routes
+- OpenAPI documentation UI
 - Metrics endpoint (port 2121)
 
 **What Does NOT Start:**
 
-- gRPC server
+- gRPC server (connects to external gRPC services instead)
 - Temporal workers
-- Message consumer
+- Message consumers
+
+**Example:**
+
+```go
+app := tonica.NewApp(
+    tonica.WithName("myservice-gateway"),
+    tonica.WithSpec("openapi/spec.json"),
+)
+
+// Don't register services directly - gateway proxies to external gRPC servers
+// Just configure custom routes if needed
+tonica.NewRoute(app).
+    GET("/health").
+    Handle(func(c *gin.Context) {
+        c.JSON(200, gin.H{"status": "healthy"})
+    })
+
+// Run in Gateway mode
+err := app.Run(context.Background(), tonica.ModeGateway)
+```
 
 **When to Use:**
 
-- ✅ High-volume message processing
-- ✅ Event-driven architectures
-- ✅ Stream processing
-- ✅ Need to scale consumers independently
-- ✅ Topic-specific processing logic
+- ✅ Separate REST API layer from gRPC services
+- ✅ Independent scaling of API gateway
+- ✅ Edge layer for multiple backend services
+- ✅ API rate limiting and caching at gateway level
+- ✅ Public-facing REST API with private gRPC backends
 
 **Architecture Pattern:**
 
 ```mermaid
 graph TD
-    LB[API Gateway]
-    LB --> API1[REST<br/>ModeRouter]
-    LB --> API2[API-1<br/>ModeService]
-    LB --> API3[API-2<br/>ModeService]
+    LB[Load Balancer]
+    LB --> GW1[Gateway-1<br/>ModeGateway<br/>REST only]
+    LB --> GW2[Gateway-2<br/>ModeGateway<br/>REST only]
+
+    GW1 --> API1[Service-1<br/>ModeService<br/>gRPC only]
+    GW1 --> API2[Service-2<br/>ModeService<br/>gRPC only]
+
+    GW2 --> API1
+    GW2 --> API2
 ```
 
-**Multiple Consumers:**
+**Use Case Example:**
 
-```go
-// Order consumer - high priority
-orderConsumer := tonica.NewConsumer(
-tonica.WithConsumerName("order-consumer"),
-tonica.WithTopic("orders"),
-tonica.WithConsumerGroup("order-processors"),
-tonica.WithHandler(processOrder),
-)
-
-// Analytics consumer - low priority
-analyticsConsumer := tonica.NewConsumer(
-tonica.WithConsumerName("analytics-consumer"),
-tonica.WithTopic("events"),
-tonica.WithConsumerGroup("analytics"),
-tonica.WithHandler(processAnalytics),
-)
-
-app.GetRegistry().MustRegisterConsumer(orderConsumer)
-app.GetRegistry().MustRegisterConsumer(analyticsConsumer)
+```
+┌─────────────┐
+│   Clients   │ (Mobile, Web, etc.)
+└──────┬──────┘
+       │ HTTP/REST
+       ↓
+┌─────────────┐
+│  Gateways   │ ModeGateway (scaled: 10 replicas)
+│  Port 8080  │ - Rate limiting
+└──────┬──────┘ - Caching
+       │ gRPC   - Auth
+       ↓
+┌─────────────┐
+│  Services   │ ModeService (scaled: 5 replicas)
+│  Port 50051 │ - Business logic
+└─────────────┘ - Database access
 ```
 
 **Resource Requirements:**
 
 ```yaml
-# Consumer resources depend on processing complexity
+# Gateway is lightweight - just proxying
 resources:
   requests:
+    cpu: "200m"
+    memory: "256Mi"
+  limits:
     cpu: "500m"
     memory: "512Mi"
-  limits:
-    cpu: "1000m"
-    memory: "1Gi"
+```
+
+**Configuration:**
+
+Point gateway to backend gRPC services:
+
+```bash
+# Service addresses
+export USERSERVICE_ADDR="user-service:50051"
+export ORDERSERVICE_ADDR="order-service:50051"
+export PAYMENTSERVICE_ADDR="payment-service:50051"
 ```
 
 ## Choosing the Right Mode
@@ -592,10 +628,10 @@ err := app.Run(ctx, tonica.ModeAio)
 
 | Mode         | Shutdown Process                                                                                                                                                                    |
 |--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **AIO**      | 1. Stop accepting new HTTP/gRPC requests<br>2. Wait for in-flight requests (30s)<br>3. Stop workers<br>4. Wait for consumers to finish current message (5s)<br>5. Close connections |
-| **Service**  | 1. Stop accepting new requests<br>2. Wait for in-flight requests (30s)<br>3. Close connections                                                                                      |
-| **Worker**   | 1. Stop accepting new tasks<br>2. Wait for current tasks to complete<br>3. Close Temporal connection                                                                                |
-| **Consumer** | 1. Stop accepting new messages<br>2. Wait for current message processing (5s)<br>3. Close message queue connection                                                                  |
+| **AIO**      | 1. Stop accepting new HTTP/gRPC requests<br/>2. Wait for in-flight requests (30s)<br/>3. Stop workers<br/>4. Wait for consumers to finish current message (5s)<br/>5. Close connections |
+| **Service**  | 1. Stop accepting new requests<br/>2. Wait for in-flight requests (30s)<br/>3. Close connections                                                                                      |
+| **Worker**   | 1. Stop accepting new tasks<br/>2. Wait for current tasks to complete<br/>3. Close Temporal connection                                                                                |
+| **Consumer** | 1. Stop accepting new messages<br/>2. Wait for current message processing (5s)<br/>3. Close message queue connection                                                                  |
 | **Gateway**  | 1. Stop accepting new HTTP requests                                                                                                                                                 |
 
 ## Monitoring Each Mode

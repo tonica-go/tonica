@@ -144,22 +144,22 @@ type Service struct {
 ```mermaid
 sequenceDiagram
     participant Client
-    participant gRPC Server<br/>(port 50051)
-    participant Service Implementation
-    participant gRPC-Gateway
-    participant HTTP Router<br/>(port 8080)
+    participant gRPC_Server_50051 as gRPC Server (port 50051)
+    participant Service_Implementation as Service Implementation
+    participant gRPC_Gateway as gRPC-Gateway
+    participant HTTP_Router_8080 as HTTP Router (port 8080)
 
-    Client->>gRPC Server<br/>(port 50051): gRPC Request
-    gRPC Server<br/>(port 50051)->>Service Implementation: Process
-    Service Implementation-->>gRPC Server<br/>(port 50051): Response
+    Client->>gRPC_Server_50051: gRPC Request
+    gRPC_Server_50051->>Service_Implementation: Process
+    Service_Implementation-->>gRPC_Server_50051: Response
 
-    Note over gRPC-Gateway: If REST Request
-    Client->>HTTP Router<br/>(port 8080): HTTP Request
-    HTTP Router<br/>(port 8080)->>gRPC-Gateway: Route
-    gRPC-Gateway->>Service Implementation: Convert to gRPC
-    Service Implementation-->>gRPC-Gateway: gRPC Response
-    gRPC-Gateway-->>HTTP Router<br/>(port 8080): Convert to HTTP
-    HTTP Router<br/>(port 8080)-->>Client: HTTP Response
+    Note over gRPC_Gateway: If REST Request
+    Client->>HTTP_Router_8080: HTTP Request
+    HTTP_Router_8080->>gRPC_Gateway: Route
+    gRPC_Gateway->>Service_Implementation: Convert to gRPC
+    Service_Implementation-->>gRPC_Gateway: gRPC Response
+    gRPC_Gateway-->>HTTP_Router_8080: Convert to HTTP
+    HTTP_Router_8080-->>Client: HTTP Response
 ```
 
 **Features:**

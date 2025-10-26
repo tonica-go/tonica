@@ -95,10 +95,12 @@ type UserHandler struct {
 
 ✅ **Good: Constructor injection**
 ```go
+import "log/slog"
+
 type UserService struct {
     repo   UserRepository
     cache  *redis.Client
-    logger *slog.Logger
+    logger *slog.Logger  // slog.Logger from standard library
 }
 
 func NewUserService(repo UserRepository, cache *redis.Client, logger *slog.Logger) *UserService {
@@ -258,9 +260,16 @@ logger.Error("failed to send email", "error", err, "recipient", email)
 ### Logging Example
 
 ```go
+import (
+    "context"
+    "log/slog"
+    "time"
+)
+
 func (s *UserService) CreateUser(ctx context.Context, user *User) error {
     start := time.Now()
 
+    // slog uses key-value pairs for structured logging
     s.logger.Info("creating user",
         "email", user.Email,
     )

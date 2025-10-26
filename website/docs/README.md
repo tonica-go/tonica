@@ -7,12 +7,13 @@ Welcome to the Tonica framework documentation! Tonica is a modern, proto-first G
 ### Core Documentation
 
 1. [**Getting Started**](./getting-started.md) - Quick setup and your first Tonica application
-2. [**Architecture Overview**](./architecture.md) - Understanding how Tonica works
-3. [**Run Modes**](./run-modes.md) - AIO, Service, Worker, and Consumer modes explained
-4. [**Configuration**](./configuration.md) - All configuration options and environment variables
-5. [**Custom Routes**](./custom-routes.md) - Adding custom HTTP routes with OpenAPI documentation
-6. [**Testing Guide**](./testing.md) - How to test your Tonica applications
-7. [**Best Practices**](./best-practices.md) - Patterns, anti-patterns, and recommendations
+2. [**CLI Reference**](./cli.md) - Tonica command-line tools and code generation
+3. [**Architecture Overview**](./architecture.md) - Understanding how Tonica works
+4. [**Run Modes**](./run-modes.md) - AIO, Service, Worker, Consumer, and Gateway modes explained
+5. [**Configuration**](./configuration.md) - All configuration options and environment variables
+6. [**Custom Routes**](./custom-routes.md) - Adding custom HTTP routes with OpenAPI documentation
+7. [**Testing Guide**](./testing.md) - How to test your Tonica applications
+8. [**Best Practices**](./best-practices.md) - Patterns, anti-patterns, and recommendations
 
 ### Additional Resources
 
@@ -89,12 +90,15 @@ tonica.NewRoute(app).
 
 ### 📊 Built-in Observability
 ```go
+import "log/slog"
+
 // Metrics
 app.GetMetricManager().NewCounter("requests_total", "Total requests")
 
 // Tracing (automatic)
-// Logging (structured)
+// Logging (structured with slog)
 app.GetLogger().Info("Processing request", "user_id", userID)
+// GetLogger() returns *slog.Logger
 ```
 
 ## Architecture
