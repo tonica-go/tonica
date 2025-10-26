@@ -12,7 +12,9 @@ func (a *App) Run() error {
 	case config.ModeService:
 		a.runService()
 	case config.ModeWorker:
+		a.runWorker()
 	case config.ModeConsumer:
+		a.runConsumer()
 	default:
 		return nil
 	}

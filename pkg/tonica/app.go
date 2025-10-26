@@ -42,6 +42,7 @@ type App struct {
 	metricRouter *gin.Engine
 
 	metricsManager metrics.Manager
+	shutdown       *Shutdown
 }
 
 func NewApp(options ...AppOption) *App {
@@ -53,6 +54,7 @@ func NewApp(options ...AppOption) *App {
 		metricsManager: metrics.NewMetricsManager(exporters.Prometheus("aoo", "0.0.0")),
 		router:         gin.New(),
 		metricRouter:   gin.New(),
+		shutdown:       NewShutdown(),
 	}
 
 	for _, option := range options {
@@ -156,6 +158,9 @@ func (a *App) runAio() {
 			),
 		)
 
+		// Register gRPC server for graceful shutdown
+		a.shutdown.RegisterGRPCServer(grpcSrv)
+
 		srvGrpc(grpcSrv, service)
 		if service.GetIsGatewayEnabled() {
 			registerGw := service.GetGateway()
@@ -163,12 +168,12 @@ func (a *App) runAio() {
 				a.GetLogger().Fatal(err)
 			}
 		}
-		go func() {
-			a.GetLogger().Println("gRPC listening", "addr", service.GetGRPCAddr())
-			if err := grpcSrv.Serve(grpcLis); err != nil {
+		go func(srv *grpc.Server, addr string) {
+			a.GetLogger().Println("gRPC listening", "addr", addr)
+			if err := srv.Serve(grpcLis); err != nil {
 				errCh <- err
 			}
-		}()
+		}(grpcSrv, service.GetGRPCAddr())
 
 	}
 
@@ -297,15 +302,24 @@ func (a *App) runAio() {
 
 	select {
 	case <-ctx.Done():
-		a.GetLogger().Println("context canceled")
-		os.Exit(1)
+		a.GetLogger().Println("shutdown signal received, starting graceful shutdown...")
+
+		// Graceful shutdown with 30 second timeout
+		if err := a.shutdown.Execute(30 * time.Second); err != nil {
+			a.GetLogger().Printf("graceful shutdown error: %v", err)
+		}
+
+		a.GetLogger().Println("shutdown complete")
+		return
 	case err := <-errCh:
 		a.GetLogger().Fatal(err)
 	}
 }
 
 func (a *App) runService() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	services, err := a.GetRegistry().GetAllServices()
 	if err != nil {
 		a.GetLogger().Fatal(err)
@@ -316,6 +330,11 @@ func (a *App) runService() {
 			continue
 		}
 		cnt++
+	}
+
+	if cnt == 0 {
+		a.GetLogger().Println("no services to run in service mode")
+		return
 	}
 
 	errCh := make(chan error, cnt)
@@ -336,20 +355,157 @@ func (a *App) runService() {
 			grpc.ChainStreamInterceptor(),
 		)
 
+		// Register gRPC server for graceful shutdown
+		a.shutdown.RegisterGRPCServer(grpcSrv)
+
 		srvGrpc(grpcSrv, service)
-		go func() {
-			a.GetLogger().Println("gRPC listening", "addr", service.GetGRPCAddr())
-			if err := grpcSrv.Serve(grpcLis); err != nil {
+		go func(srv *grpc.Server, addr string) {
+			a.GetLogger().Println("gRPC listening", "addr", addr)
+			if err := srv.Serve(grpcLis); err != nil {
 				errCh <- err
 			}
-		}()
+		}(grpcSrv, service.GetGRPCAddr())
 
 	}
 
 	select {
 	case <-ctx.Done():
-		a.GetLogger().Println("context canceled")
-		os.Exit(1)
+		a.GetLogger().Println("shutdown signal received, starting graceful shutdown...")
+
+		// Graceful shutdown with 30 second timeout
+		if err := a.shutdown.Execute(30 * time.Second); err != nil {
+			a.GetLogger().Printf("graceful shutdown error: %v", err)
+		}
+
+		a.GetLogger().Println("shutdown complete")
+		return
+	case err := <-errCh:
+		a.GetLogger().Fatal(err)
+	}
+}
+
+func (a *App) runWorker() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Observability
+	o, err := initObs(ctx, a.cfg.AppName())
+	if err != nil {
+		a.logger.Fatal(err)
+	}
+	defer func() { _ = o.Shutdown(context.Background()) }()
+
+	workers, err := a.GetRegistry().GetAllWorkers()
+	if err != nil {
+		a.GetLogger().Fatal(err)
+	}
+
+	if len(workers) == 0 {
+		a.GetLogger().Println("no workers registered, exiting")
+		return
+	}
+
+	// Start metrics server
+	go func() {
+		router := a.metricRouter
+
+		router.Use(gin.Recovery())
+		router.Use(obs.HTTPLogger())
+		metrics.GetHandler(a.GetMetricManager(), router)
+
+		router.GET("/healthz", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"status": "ok",
+				"now":    time.Now().UTC().Format(time.RFC3339),
+			})
+		})
+
+		addr := config.GetEnv("APP_METRIC_ADDR", ":2121")
+		a.GetLogger().Println("metrics server running, listening addr", addr)
+		router.Run(addr)
+	}()
+
+	// Start all workers
+	errCh := make(chan error, len(workers))
+	for _, w := range workers {
+		worker := w // capture for goroutine
+		go func() {
+			a.GetLogger().Println("starting worker", "name", worker.Name(), "queue", worker.GetQueue())
+			if err := worker.Start(); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+
+	select {
+	case <-ctx.Done():
+		a.GetLogger().Println("worker mode: context canceled, shutting down")
+		// TODO: implement graceful shutdown for workers
+		return
+	case err := <-errCh:
+		a.GetLogger().Fatal(err)
+	}
+}
+
+func (a *App) runConsumer() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Observability
+	o, err := initObs(ctx, a.cfg.AppName())
+	if err != nil {
+		a.logger.Fatal(err)
+	}
+	defer func() { _ = o.Shutdown(context.Background()) }()
+
+	consumers, err := a.GetRegistry().GetAllConsumers()
+	if err != nil {
+		a.GetLogger().Fatal(err)
+	}
+
+	if len(consumers) == 0 {
+		a.GetLogger().Println("no consumers registered, exiting")
+		return
+	}
+
+	// Start metrics server
+	go func() {
+		router := a.metricRouter
+
+		router.Use(gin.Recovery())
+		router.Use(obs.HTTPLogger())
+		metrics.GetHandler(a.GetMetricManager(), router)
+
+		router.GET("/healthz", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"status": "ok",
+				"now":    time.Now().UTC().Format(time.RFC3339),
+			})
+		})
+
+		addr := config.GetEnv("APP_METRIC_ADDR", ":2121")
+		a.GetLogger().Println("metrics server running, listening addr", addr)
+		router.Run(addr)
+	}()
+
+	// Start all consumers
+	errCh := make(chan error, len(consumers))
+	for _, c := range consumers {
+		consumer := c // capture for goroutine
+		go func() {
+			a.GetLogger().Println("starting consumer", "name", consumer.GetName(), "topic", consumer.GetTopic())
+			if err := consumer.Start(ctx); err != nil && err != context.Canceled {
+				errCh <- err
+			}
+		}()
+	}
+
+	select {
+	case <-ctx.Done():
+		a.GetLogger().Println("consumer mode: context canceled, shutting down gracefully")
+		// Give consumers time to finish processing current messages
+		time.Sleep(5 * time.Second)
+		return
 	case err := <-errCh:
 		a.GetLogger().Fatal(err)
 	}
