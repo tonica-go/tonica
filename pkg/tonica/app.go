@@ -34,7 +34,9 @@ type App struct {
 	logger   *log.Logger
 	cfg      *config.Config
 
-	spec string
+	spec         string
+	specUrl      string
+	customRoutes []RouteMetadata
 
 	router       *gin.Engine
 	metricRouter *gin.Engine
@@ -215,15 +217,43 @@ func (a *App) runAio() {
 		router.Use(obs.HTTPLogger())
 		router.Use(cors.New(buildCORSConfig()))
 
-		router.GET("/ping", func(c *gin.Context) {
-			c.JSON(200, gin.H{
-				"message": "pong",
-			})
-		})
 		if a.spec != "" {
+			specContent := func() ([]byte, error) {
+				specBytes, err := os.ReadFile(a.spec)
+				if err != nil {
+					a.GetLogger().Printf("failed to read spec file %s: %v", a.spec, err)
+					//c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read spec file"})
+					return nil, err
+				}
+
+				// Merge custom routes into the spec
+				mergedSpec, err := mergeCustomRoutesIntoSpec(specBytes, a.customRoutes)
+				if err != nil {
+					a.GetLogger().Printf("failed to merge custom routes: %v", err)
+					//c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to merge custom routes"})
+					return nil, err
+				}
+
+				return mergedSpec, nil
+			}
+
+			// Serve merged OpenAPI spec with custom routes at /openapi.json
+			router.GET("/openapi.json", func(c *gin.Context) {
+				specBytes, err := specContent()
+				if err != nil {
+					a.GetLogger().Printf("failed to read spec file %s: %v", a.spec, err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read spec file"})
+					return
+				}
+
+				c.Data(http.StatusOK, "application/json", specBytes)
+			})
+		}
+		if a.specUrl != "" {
+
 			docs := func(w http.ResponseWriter, r *http.Request) {
 				htmlContent, err := scalar.ApiReferenceHTML(&scalar.Options{
-					SpecURL:  a.spec,
+					SpecURL:  a.specUrl,
 					DarkMode: true,
 				})
 

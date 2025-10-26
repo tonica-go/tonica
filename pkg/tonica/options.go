@@ -38,3 +38,9 @@ func WithSpec(spec string) AppOption {
 		a.spec = spec
 	}
 }
+
+func WithSpecUrl(spec string) AppOption {
+	return func(a *App) {
+		a.specUrl = spec
+	}
+}
