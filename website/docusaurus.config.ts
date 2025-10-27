@@ -12,9 +12,9 @@ const config: Config = {
   },
 
   // Set the production url of your site here
-  url: 'https://tonica-go.github.io',
+  url: 'https://tonica.dev',
   // For GitHub pages: /<projectName>/
-  baseUrl: '/tonica/',
+  baseUrl: '/',
 
   // GitHub pages deployment config
   organizationName: 'tonica-go',
