@@ -1,0 +1,46 @@
+{
+  "link.title.Documentation": {
+    "message": "Документация",
+    "description": "The title of the footer links column with title=Documentation in the footer"
+  },
+  "link.title.Community": {
+    "message": "Сообщество",
+    "description": "The title of the footer links column with title=Community in the footer"
+  },
+  "link.title.More": {
+    "message": "Дополнительно",
+    "description": "The title of the footer links column with title=More in the footer"
+  },
+  "link.item.label.Getting Started": {
+    "message": "Начало работы",
+    "description": "The label of footer link with label=Getting Started linking to /docs/getting-started"
+  },
+  "link.item.label.Architecture": {
+    "message": "Архитектура",
+    "description": "The label of footer link with label=Architecture linking to /docs/architecture"
+  },
+  "link.item.label.Best Practices": {
+    "message": "Лучшие практики",
+    "description": "The label of footer link with label=Best Practices linking to /docs/best-practices"
+  },
+  "link.item.label.GitHub Discussions": {
+    "message": "Обсуждения на GitHub",
+    "description": "The label of footer link with label=GitHub Discussions linking to https://github.com/tonica-go/tonica/discussions"
+  },
+  "link.item.label.Issues": {
+    "message": "Проблемы",
+    "description": "The label of footer link with label=Issues linking to https://github.com/tonica-go/tonica/issues"
+  },
+  "link.item.label.GitHub": {
+    "message": "GitHub",
+    "description": "The label of footer link with label=GitHub linking to https://github.com/tonica-go/tonica"
+  },
+  "link.item.label.Go Package": {
+    "message": "Go Пакет",
+    "description": "The label of footer link with label=Go Package linking to https://pkg.go.dev/github.com/tonica-go/tonica"
+  },
+  "copyright": {
+    "message": "Copyright © 2025 Tonica Framework.",
+    "description": "The footer copyright"
+  }
+}
