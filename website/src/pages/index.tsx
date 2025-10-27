@@ -19,7 +19,7 @@ function HomepageHeader() {
                ‼️ UNDER HEAVY DEVELOPMENT ‼️
             </div>
         </Heading>
-        <img width={'300'} src={"/tonica/img/tonica-gofer.webp"} />
+        <img width={'300'} src={"/img/tonica-gofer.webp"} />
         <p className="hero__subtitle">{siteConfig.tagline}</p>
         <div className={styles.buttons}>
           <Link
