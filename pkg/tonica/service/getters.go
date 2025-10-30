@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/tonica-go/tonica/pkg/tonica/grpc/serviceconfig"
+	"github.com/uptrace/bun"
 	"google.golang.org/grpc"
 )
 
@@ -34,4 +35,19 @@ func (s *Service) GetGateway() GatewayRegistrar {
 
 func (s *Service) GetIsGatewayEnabled() bool {
 	return s.isGatewayEnabled
+}
+
+func (s *Service) GetDB() *DB {
+	if s.storage == nil || s.storage.db == nil {
+		return nil
+	}
+	return s.storage.db
+}
+
+func (s *Service) GetDBClient() *bun.DB {
+	db := s.GetDB()
+	if db == nil {
+		return nil
+	}
+	return db.GetClient()
 }

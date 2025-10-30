@@ -34,6 +34,7 @@ type App struct {
 	spec         string
 	specUrl      string
 	customRoutes []RouteMetadata
+	apiPrefix    string
 
 	router       *gin.Engine
 	metricRouter *gin.Engine
@@ -52,6 +53,7 @@ func NewApp(options ...AppOption) *App {
 		router:         gin.New(),
 		metricRouter:   gin.New(),
 		shutdown:       NewShutdown(),
+		apiPrefix:      "/v1", // default prefix for backward compatibility
 	}
 
 	for _, option := range options {
@@ -226,7 +228,7 @@ func (a *App) registerAPI(ctx context.Context) {
 		router.GET("/docs", gin.WrapF(docs))
 	}
 
-	router.Any("/v1/*any", gin.WrapH(a.registerGateway(ctx)))
+	router.Any(a.apiPrefix+"/*any", gin.WrapH(a.registerGateway(ctx)))
 
 	addr := config.GetEnv("APP_HTTP_ADDR", ":8080")
 	a.GetLogger().Println("http server running, listening addr", addr)

@@ -44,3 +44,9 @@ func WithSpecUrl(spec string) AppOption {
 		a.specUrl = spec
 	}
 }
+
+func WithAPIPrefix(prefix string) AppOption {
+	return func(a *App) {
+		a.apiPrefix = prefix
+	}
+}
