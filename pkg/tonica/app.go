@@ -228,11 +228,21 @@ func (a *App) registerAPI(ctx context.Context) {
 		router.GET("/docs", gin.WrapF(docs))
 	}
 
-	router.Any(a.apiPrefix+"/*any", gin.WrapH(a.registerGateway(ctx)))
+	router.Any(a.apiPrefix+"/*any", WrapH(a.registerGateway(ctx)))
 
 	addr := config.GetEnv("APP_HTTP_ADDR", ":8080")
 	a.GetLogger().Println("http server running, listening addr", addr)
 	router.Run(addr)
+}
+
+func WrapH(h http.Handler) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, exist := c.Get("identity")
+		if exist {
+			c.Request.WithContext(context.WithValue(c.Request.Context(), "identity", id))
+		}
+		h.ServeHTTP(c.Writer, c.Request)
+	}
 }
 
 func (a *App) registerConsumers(ctx context.Context) {
