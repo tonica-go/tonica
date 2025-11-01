@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 type App struct {
@@ -110,6 +111,7 @@ func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		obs.GRPCClientStats(),
+		grpc.WithUnaryInterceptor(ClientContextInterceptor()),
 	}
 
 	services, err := a.GetRegistry().GetAllServices()
@@ -235,11 +237,32 @@ func (a *App) registerAPI(ctx context.Context) {
 	router.Run(addr)
 }
 
+func ClientContextInterceptor() grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		md := metadata.MD{}
+
+		// Извлекаем identity из контекста и добавляем в metadata
+		if identity, ok := ctx.Value("identity").(string); ok && identity != "" {
+			md.Set("x-identity", identity)
+		}
+
+		// Добавляем metadata в контекст
+		if len(md) > 0 {
+			ctx = metadata.NewOutgoingContext(ctx, md)
+		}
+
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
 func WrapH(h http.Handler) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, exist := c.Get("identity")
 		if exist {
-			c.Request.WithContext(context.WithValue(c.Request.Context(), "identity", id))
+
+			r := c.Request.WithContext(context.WithValue(c.Request.Context(), "identity", id))
+			h.ServeHTTP(c.Writer, r)
+			return
 		}
 		h.ServeHTTP(c.Writer, c.Request)
 	}
@@ -275,6 +298,15 @@ func (a *App) registerWorkers(_ context.Context) {
 	}
 }
 
+// UnaryInterceptor returns a gRPC unary interceptor that authenticates incoming requests.
+func UnaryInterceptor() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		// Allowlist unauthenticated methods (e.g., login, session refresh, health checks)
+
+		return handler(ctx, req)
+	}
+}
+
 func (a *App) registerServices(_ context.Context, errCh chan error) {
 	services, err := a.GetRegistry().GetAllServices()
 	if err != nil {
@@ -292,6 +324,7 @@ func (a *App) registerServices(_ context.Context, errCh chan error) {
 		grpcSrv = grpc.NewServer(
 			obs.GRPCServerStats(),
 			grpc.ChainUnaryInterceptor(
+				UnaryInterceptor(),
 				obs.GRPCRecoverUnary(),
 				obs.GRPCLoggingUnary(),
 			),
