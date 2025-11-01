@@ -2,8 +2,10 @@ package tonica
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -107,11 +109,26 @@ func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 				return runtime.DefaultHeaderMatcher(key)
 			}
 		}),
+		runtime.WithMetadata(func(ctx context.Context, r *http.Request) metadata.MD {
+			md := metadata.MD{}
+
+			// Извлекаем identity из контекста и добавляем в metadata
+			if identity, ok := ctx.Value("identity").(map[string]interface{}); ok && identity != nil {
+				ib, err := json.Marshal(identity)
+				if err != nil {
+					slog.Error("Failed to marshal identity", "error", err)
+					return metadata.MD{}
+				}
+				md.Set("x-identity", string(ib))
+			}
+
+			return md
+		}),
 	)
 	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		obs.GRPCClientStats(),
-		grpc.WithUnaryInterceptor(ClientContextInterceptor()),
+		//grpc.WithUnaryInterceptor(ClientContextInterceptor()),
 	}
 
 	services, err := a.GetRegistry().GetAllServices()
@@ -237,24 +254,6 @@ func (a *App) registerAPI(ctx context.Context) {
 	router.Run(addr)
 }
 
-func ClientContextInterceptor() grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		md := metadata.MD{}
-
-		// Извлекаем identity из контекста и добавляем в metadata
-		if identity, ok := ctx.Value("identity").(string); ok && identity != "" {
-			md.Set("x-identity", identity)
-		}
-
-		// Добавляем metadata в контекст
-		if len(md) > 0 {
-			ctx = metadata.NewOutgoingContext(ctx, md)
-		}
-
-		return invoker(ctx, method, req, reply, cc, opts...)
-	}
-}
-
 func WrapH(h http.Handler) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, exist := c.Get("identity")
@@ -302,6 +301,21 @@ func (a *App) registerWorkers(_ context.Context) {
 func UnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		// Allowlist unauthenticated methods (e.g., login, session refresh, health checks)
+		md, ok := metadata.FromIncomingContext(ctx)
+		if !ok {
+			return handler(ctx, req)
+		}
+
+		// Извлекаем identity из metadata
+		if identityJSON := md.Get("x-identity"); len(identityJSON) > 0 {
+			var identity map[string]interface{}
+			if err := json.Unmarshal([]byte(identityJSON[0]), &identity); err != nil {
+				slog.Error("Failed to unmarshal identity", "error", err)
+			} else {
+				// Добавляем identity в контекст
+				ctx = context.WithValue(ctx, "identity", identity)
+			}
+		}
 
 		return handler(ctx, req)
 	}
