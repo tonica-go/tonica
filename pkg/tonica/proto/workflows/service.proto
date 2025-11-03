@@ -1,0 +1,326 @@
+syntax = "proto3";
+
+package workflow.v1;
+
+option go_package = "proto/gen/workflow;workflow";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/empty.proto";
+
+// ===== Workflow Trigger =====
+
+message TriggerWorkflowRequest {
+  string workflow = 1;
+  string entity = 2;
+  string record_id = 3;
+  map<string, string> input = 4;
+}
+
+message TriggerWorkflowResponse {
+  string execution_id = 1;
+  string status = 2;
+}
+
+// ===== Workflow Monitoring =====
+
+enum WorkflowStatus {
+  WORKFLOW_STATUS_UNSPECIFIED = 0;
+  WORKFLOW_STATUS_RUNNING = 1;
+  WORKFLOW_STATUS_COMPLETED = 2;
+  WORKFLOW_STATUS_FAILED = 3;
+  WORKFLOW_STATUS_CANCELED = 4;
+  WORKFLOW_STATUS_TERMINATED = 5;
+  WORKFLOW_STATUS_CONTINUED_AS_NEW = 6;
+  WORKFLOW_STATUS_TIMED_OUT = 7;
+}
+
+message ListNamespacesRequest {}
+
+message Namespace {
+  string name = 1;
+  string description = 2;
+}
+
+message ListNamespacesResponse {
+  repeated Namespace namespaces = 1;
+}
+
+message ListWorkflowsRequest {
+  string namespace = 1;
+  string workflow_type = 2;  // Filter by workflow type (optional)
+  WorkflowStatus status = 3; // Filter by status (optional)
+  int32 page_size = 4;
+  string page_token = 5;
+  string search_query = 6; // Free-form search query
+}
+
+message WorkflowExecution {
+  string workflow_id = 1;
+  string run_id = 2;
+  string workflow_type = 3;
+  string namespace = 4;
+  WorkflowStatus status = 5;
+  google.protobuf.Timestamp start_time = 6;
+  google.protobuf.Timestamp close_time = 7;
+  int64 history_length = 8;
+  string parent_workflow_id = 9;
+  string parent_run_id = 10;
+  google.protobuf.Struct search_attributes = 11;
+}
+
+message ListWorkflowsResponse {
+  repeated WorkflowExecution executions = 1;
+  string next_page_token = 2;
+}
+
+message GetWorkflowRequest {
+  string namespace = 1;
+  string workflow_id = 2;
+  string run_id = 3; // Optional, uses latest if not provided
+}
+
+message WorkflowDetails {
+  WorkflowExecution execution = 1;
+  google.protobuf.Struct input = 2;
+  google.protobuf.Struct result = 3;
+  google.protobuf.Struct failure_message = 4; // Full failure information including cause chain
+  google.protobuf.Timestamp execution_time = 5;
+  repeated PendingActivity pending_activities = 6;
+}
+
+message PendingActivity {
+  string activity_id = 1;
+  string activity_type = 2;
+  google.protobuf.Timestamp scheduled_time = 3;
+  int32 attempt = 4;
+  google.protobuf.Timestamp last_heartbeat_time = 5;
+}
+
+message GetWorkflowHistoryRequest {
+  string namespace = 1;
+  string workflow_id = 2;
+  string run_id = 3; // Optional
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+enum HistoryEventType {
+  HISTORY_EVENT_TYPE_UNSPECIFIED = 0;
+  HISTORY_EVENT_TYPE_WORKFLOW_EXECUTION_STARTED = 1;
+  HISTORY_EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED = 2;
+  HISTORY_EVENT_TYPE_WORKFLOW_EXECUTION_FAILED = 3;
+  HISTORY_EVENT_TYPE_WORKFLOW_EXECUTION_TIMED_OUT = 4;
+  HISTORY_EVENT_TYPE_WORKFLOW_EXECUTION_CANCELED = 5;
+  HISTORY_EVENT_TYPE_WORKFLOW_EXECUTION_TERMINATED = 6;
+  HISTORY_EVENT_TYPE_WORKFLOW_TASK_SCHEDULED = 7;
+  HISTORY_EVENT_TYPE_WORKFLOW_TASK_STARTED = 8;
+  HISTORY_EVENT_TYPE_WORKFLOW_TASK_COMPLETED = 9;
+  HISTORY_EVENT_TYPE_WORKFLOW_TASK_FAILED = 10;
+  HISTORY_EVENT_TYPE_ACTIVITY_TASK_SCHEDULED = 11;
+  HISTORY_EVENT_TYPE_ACTIVITY_TASK_STARTED = 12;
+  HISTORY_EVENT_TYPE_ACTIVITY_TASK_COMPLETED = 13;
+  HISTORY_EVENT_TYPE_ACTIVITY_TASK_FAILED = 14;
+  HISTORY_EVENT_TYPE_ACTIVITY_TASK_TIMED_OUT = 15;
+  HISTORY_EVENT_TYPE_ACTIVITY_TASK_CANCEL_REQUESTED = 16;
+  HISTORY_EVENT_TYPE_ACTIVITY_TASK_CANCELED = 17;
+  HISTORY_EVENT_TYPE_TIMER_STARTED = 18;
+  HISTORY_EVENT_TYPE_TIMER_FIRED = 19;
+  HISTORY_EVENT_TYPE_TIMER_CANCELED = 20;
+  HISTORY_EVENT_TYPE_MARKER_RECORDED = 21;
+  HISTORY_EVENT_TYPE_SIGNAL_EXTERNAL_WORKFLOW_EXECUTION_INITIATED = 22;
+  HISTORY_EVENT_TYPE_WORKFLOW_EXECUTION_SIGNALED = 23;
+}
+
+message HistoryEvent {
+  int64 event_id = 1;
+  google.protobuf.Timestamp event_time = 2;
+  HistoryEventType event_type = 3;
+  int64 task_id = 4;
+  google.protobuf.Struct attributes = 5; // Event-specific attributes
+  string event_name = 6; // Human-readable event name (activity name, timer ID, etc.)
+}
+
+message GetWorkflowHistoryResponse {
+  repeated HistoryEvent history = 1;
+  string next_page_token = 2;
+}
+
+// ===== Workflow Control =====
+
+message TerminateWorkflowRequest {
+  string namespace = 1;
+  string workflow_id = 2;
+  string run_id = 3; // Optional
+  string reason = 4;
+}
+
+message CancelWorkflowRequest {
+  string namespace = 1;
+  string workflow_id = 2;
+  string run_id = 3; // Optional
+}
+
+message SignalWorkflowRequest {
+  string namespace = 1;
+  string workflow_id = 2;
+  string run_id = 3; // Optional
+  string signal_name = 4;
+  google.protobuf.Struct input = 5;
+}
+
+message RestartWorkflowRequest {
+  string namespace = 1;
+  string workflow_id = 2;
+  string run_id = 3; // Run ID to restart from
+}
+
+message RestartWorkflowResponse {
+  string workflow_id = 1;
+  string run_id = 2;
+}
+
+// ===== Scheduled Workflows =====
+
+message ListSchedulesRequest {
+  string namespace = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message Schedule {
+  string schedule_id = 1;
+  string workflow_type = 2;
+  string cron_expression = 3;
+  google.protobuf.Timestamp next_run_time = 4;
+  google.protobuf.Timestamp last_run_time = 5;
+  bool paused = 6;
+  string notes = 7;
+  google.protobuf.Struct workflow_input = 8;
+}
+
+message ListSchedulesResponse {
+  repeated Schedule schedules = 1;
+  string next_page_token = 2;
+}
+
+message GetScheduleRequest {
+  string namespace = 1;
+  string schedule_id = 2;
+}
+
+message PauseScheduleRequest {
+  string namespace = 1;
+  string schedule_id = 2;
+  string note = 3;
+}
+
+message UnpauseScheduleRequest {
+  string namespace = 1;
+  string schedule_id = 2;
+  string note = 3;
+}
+
+message TriggerScheduleRequest {
+  string namespace = 1;
+  string schedule_id = 2;
+}
+
+service WorkflowService {
+  rpc TriggerWorkflow(TriggerWorkflowRequest) returns (TriggerWorkflowResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows/trigger"
+      body: "*"
+    };
+  }
+
+  // Monitoring
+  rpc ListNamespaces(ListNamespacesRequest) returns (ListNamespacesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/workflows/namespaces"
+    };
+  }
+
+  rpc ListWorkflows(ListWorkflowsRequest) returns (ListWorkflowsResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows/search"
+      body: "*"
+    };
+  }
+
+  rpc GetWorkflow(GetWorkflowRequest) returns (WorkflowDetails) {
+    option (google.api.http) = {
+      get: "/api/v1/workflows/{namespace}/{workflow_id}"
+    };
+  }
+
+  rpc GetWorkflowHistory(GetWorkflowHistoryRequest) returns (GetWorkflowHistoryResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/workflows/{namespace}/{workflow_id}/history"
+    };
+  }
+
+  // Control
+  rpc TerminateWorkflow(TerminateWorkflowRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows/{namespace}/{workflow_id}/terminate"
+      body: "*"
+    };
+  }
+
+  rpc CancelWorkflow(CancelWorkflowRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows/{namespace}/{workflow_id}/cancel"
+      body: "*"
+    };
+  }
+
+  rpc SignalWorkflow(SignalWorkflowRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows/{namespace}/{workflow_id}/signal"
+      body: "*"
+    };
+  }
+
+  rpc RestartWorkflow(RestartWorkflowRequest) returns (RestartWorkflowResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows/{namespace}/{workflow_id}/restart"
+      body: "*"
+    };
+  }
+
+  // Schedules
+  rpc ListSchedules(ListSchedulesRequest) returns (ListSchedulesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/workflows/{namespace}/schedules"
+    };
+  }
+
+  rpc GetSchedule(GetScheduleRequest) returns (Schedule) {
+    option (google.api.http) = {
+      get: "/api/v1/workflows/{namespace}/schedules/{schedule_id}"
+    };
+  }
+
+  rpc PauseSchedule(PauseScheduleRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows/{namespace}/schedules/{schedule_id}/pause"
+      body: "*"
+    };
+  }
+
+  rpc UnpauseSchedule(UnpauseScheduleRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows/{namespace}/schedules/{schedule_id}/unpause"
+      body: "*"
+    };
+  }
+
+  rpc TriggerSchedule(TriggerScheduleRequest) returns (TriggerWorkflowResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows/{namespace}/schedules/{schedule_id}/trigger"
+      body: "*"
+    };
+  }
+}

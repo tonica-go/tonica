@@ -29,8 +29,8 @@ type Config struct {
 	runMode   string
 
 	services  []string
-	workers   []WorkerConfig
-	consumers []ConsumerConfig
+	workers   []string
+	consumers []string
 }
 
 func (c *Config) AppName() string {
@@ -48,11 +48,11 @@ func (c *Config) RunMode() string {
 	return c.runMode
 }
 
-func (c *Config) Workers() []WorkerConfig {
+func (c *Config) Workers() []string {
 	return c.workers
 }
 
-func (c *Config) Consumers() []ConsumerConfig {
+func (c *Config) Consumers() []string {
 	return c.consumers
 }
 

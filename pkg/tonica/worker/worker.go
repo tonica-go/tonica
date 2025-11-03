@@ -5,13 +5,19 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/interceptor"
 	"go.temporal.io/sdk/worker"
+	"go.temporal.io/sdk/workflow"
 
 	oteltemporal "go.temporal.io/sdk/contrib/opentelemetry"
 )
 
+type WF struct {
+	Function interface{}
+	Name     string
+}
+
 type Worker struct {
 	activities []interface{}
-	workflows  []interface{}
+	workflows  []*WF
 	queue      string
 	name       string
 	client     client.Client
@@ -20,7 +26,7 @@ type Worker struct {
 func NewWorker(options ...Option) *Worker {
 	app := &Worker{
 		activities: []interface{}{},
-		workflows:  []interface{}{},
+		workflows:  []*WF{},
 	}
 
 	for _, option := range options {
@@ -34,7 +40,7 @@ func (app *Worker) Activities() []interface{} {
 	return app.activities
 }
 
-func (app *Worker) Workflows() []interface{} {
+func (app *Worker) Workflows() []*WF {
 	return app.workflows
 }
 
@@ -58,8 +64,9 @@ func (app *Worker) Start() error {
 		w.RegisterActivity(activity)
 	}
 
-	for _, workflow := range app.workflows {
-		w.RegisterWorkflow(workflow)
+	for _, wf := range app.workflows {
+		//w.RegisterWorkflow(workflow)
+		w.RegisterWorkflowWithOptions(wf.Function, workflow.RegisterOptions{Name: wf.Name})
 	}
 
 	return w.Run(worker.InterruptCh())
@@ -90,7 +97,7 @@ func WithActivities(activities []interface{}) Option {
 	}
 }
 
-func WithWorkflows(workflows []interface{}) Option {
+func WithWorkflows(workflows []*WF) Option {
 	return func(a *Worker) {
 		a.workflows = workflows
 	}

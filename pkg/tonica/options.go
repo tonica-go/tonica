@@ -50,3 +50,19 @@ func WithAPIPrefix(prefix string) AppOption {
 		a.apiPrefix = prefix
 	}
 }
+
+func WithWorkflowService(namespace string) AppOption {
+	return func(a *App) {
+		a.isWorkflowService = true
+		a.workflowNamespace = namespace
+	}
+}
+
+func WithEntityService(definitionsPath, dbDriver, dsn string) AppOption {
+	return func(a *App) {
+		a.isEntityService = true
+		a.entityDefinitions = definitionsPath
+		a.entityDriver = dbDriver
+		a.entityDSN = dsn
+	}
+}

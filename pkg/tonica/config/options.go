@@ -38,13 +38,13 @@ func WithServices(services []string) Option {
 	}
 }
 
-func WithWorkers(workers []WorkerConfig) Option {
+func WithWorkers(workers []string) Option {
 	return func(cfg *Config) {
 		cfg.workers = workers
 	}
 }
 
-func WithConsumers(consumers []ConsumerConfig) Option {
+func WithConsumers(consumers []string) Option {
 	return func(cfg *Config) {
 		cfg.consumers = consumers
 	}

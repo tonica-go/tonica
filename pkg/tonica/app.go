@@ -20,6 +20,8 @@ import (
 	"github.com/tonica-go/tonica/pkg/tonica/logger"
 	"github.com/tonica-go/tonica/pkg/tonica/metrics"
 	"github.com/tonica-go/tonica/pkg/tonica/metrics/exporters"
+	"github.com/tonica-go/tonica/pkg/tonica/modules/entities"
+	"github.com/tonica-go/tonica/pkg/tonica/modules/workflows"
 	obs "github.com/tonica-go/tonica/pkg/tonica/observabillity"
 	"github.com/tonica-go/tonica/pkg/tonica/registry"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -39,6 +41,14 @@ type App struct {
 	customRoutes []RouteMetadata
 	apiPrefix    string
 
+	isWorkflowService bool
+	workflowNamespace string
+
+	isEntityService   bool
+	entityDefinitions string
+	entityDriver      string
+	entityDSN         string
+
 	router       *gin.Engine
 	metricRouter *gin.Engine
 
@@ -52,7 +62,7 @@ func NewApp(options ...AppOption) *App {
 		Name:           config.DefaultAppName,
 		registry:       registry.NewRegistry(),
 		logger:         l,
-		metricsManager: metrics.NewMetricsManager(exporters.Prometheus("aoo", "0.0.0")),
+		metricsManager: metrics.NewMetricsManager(exporters.Prometheus(config.DefaultAppName, "0.0.0")),
 		router:         gin.New(),
 		metricRouter:   gin.New(),
 		shutdown:       NewShutdown(),
@@ -90,6 +100,7 @@ func (a *App) GetRouter() *gin.Engine {
 
 // initObs initializes OpenTelemetry + Prometheus for a given service name.
 func initObs(ctx context.Context, service string) (*obs.Observability, error) {
+	slog.Info(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	return obs.Init(ctx, obs.Config{
 		ServiceName:    service,
 		ServiceVersion: "v0.1.0",
@@ -172,7 +183,7 @@ func (a *App) registerMetrics(_ context.Context) {
 				//if overall {
 				//	return "ok"
 				//}
-				return "degraded"
+				return "ok"
 			}(),
 			"now":    time.Now().UTC().Format(time.RFC3339),
 			"checks": "results",
@@ -185,9 +196,7 @@ func (a *App) registerMetrics(_ context.Context) {
 }
 
 func (a *App) registerAPI(ctx context.Context) {
-
 	router := a.router
-
 	router.Use(gin.Recovery())
 	router.Use(otelgin.Middleware(a.Name + "-http"))
 	router.Use(obs.RequestID())
@@ -322,6 +331,25 @@ func UnaryInterceptor() grpc.UnaryServerInterceptor {
 }
 
 func (a *App) registerServices(_ context.Context, errCh chan error) {
+	if a.isEntityService {
+		// Register Entities service
+		entitiesService := entities.NewTonicaService(a.entityDriver, a.entityDSN)
+		a.GetRegistry().MustRegisterService(entitiesService)
+		slog.Info("registered entities service")
+	}
+
+	if a.isWorkflowService {
+		// Temporal client configuration
+		temporalClient, err := GetTemporalClient("")
+		if err != nil {
+			a.GetLogger().Fatal(err)
+		}
+		// Register Workflows service
+		workflowsService := workflows.NewTonicaService(temporalClient)
+		a.GetRegistry().MustRegisterService(workflowsService)
+		slog.Info("Registered workflows")
+	}
+
 	services, err := a.GetRegistry().GetAllServices()
 	if err != nil {
 		a.GetLogger().Fatal(err)
@@ -383,11 +411,12 @@ const gatewayCount = 1
 
 func (a *App) runAio(ctx context.Context) {
 	go a.registerMetrics(ctx)
+	errCh := make(chan error, gatewayCount+a.GetRegistry().GetCountWorkers()+a.GetRegistry().GetCountConsumers()+a.GetRegistry().GetCountServices()+a.GetRegistry().GetCountServices())
+	a.registerServices(ctx, errCh)
 	go a.registerAPI(ctx)
 	go a.registerWorkers(ctx)
 	go a.registerConsumers(ctx)
-	errCh := make(chan error, gatewayCount+a.GetRegistry().GetCountWorkers()+a.GetRegistry().GetCountConsumers()+a.GetRegistry().GetCountServices()+a.GetRegistry().GetCountServices())
-	a.registerServices(ctx, errCh)
+
 	a.run(ctx, errCh)
 }
 

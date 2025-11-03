@@ -1,0 +1,240 @@
+syntax = "proto3";
+
+package entities.v1;
+
+option go_package = "proto/gen/entities;entities";
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+enum FieldType {
+  FIELD_TYPE_UNSPECIFIED = 0;
+  FIELD_TYPE_STRING = 1;
+  FIELD_TYPE_NUMBER = 2;
+  FIELD_TYPE_BOOLEAN = 3;
+  FIELD_TYPE_DATETIME = 4;
+  FIELD_TYPE_UUID = 5;
+  FIELD_TYPE_ENUM = 6;
+  FIELD_TYPE_OBJECT = 7;
+  FIELD_TYPE_ARRAY = 8;
+}
+
+enum FilterOperator {
+  FILTER_OPERATOR_UNSPECIFIED = 0;
+  FILTER_OPERATOR_EQ = 1;
+  FILTER_OPERATOR_NE = 2;
+  FILTER_OPERATOR_CONTAINS = 3;
+  FILTER_OPERATOR_IN = 4;
+  FILTER_OPERATOR_GT = 5;
+  FILTER_OPERATOR_GTE = 6;
+  FILTER_OPERATOR_LT = 7;
+  FILTER_OPERATOR_LTE = 8;
+}
+
+enum SortDirection {
+  SORT_DIRECTION_UNSPECIFIED = 0;
+  SORT_DIRECTION_ASC = 1;
+  SORT_DIRECTION_DESC = 2;
+}
+
+message FilterDefinition {
+  repeated FilterOperator operators = 1;
+}
+
+message FieldDefinition {
+  string id = 1;
+  string display_name = 2;
+  FieldType type = 3;
+  bool required = 4;
+  bool repeated = 5;
+  bool sortable = 6;
+  FilterDefinition filter = 7;
+  map<string, string> metadata = 8;
+}
+
+message EntityDefinition {
+  string id = 1;
+  string display_name = 2;
+  string description = 3;
+  string primary_key = 4;
+  repeated FieldDefinition fields = 5;
+  map<string, string> metadata = 6;
+}
+
+message ListEntitiesResponse {
+  repeated EntityDefinition entities = 1;
+}
+
+message GetEntityRequest {
+  string id = 1;
+}
+
+message RecordMetadata {
+  string id = 1;
+  google.protobuf.Timestamp created_at = 2;
+  google.protobuf.Timestamp updated_at = 3;
+  string created_by = 4;
+  string updated_by = 5;
+}
+
+message Record {
+  string entity = 1;
+  string id = 2;
+  google.protobuf.Struct data = 3;
+  RecordMetadata metadata = 4;
+}
+
+message FilterExpression {
+  string field = 1;
+  FilterOperator operator = 2;
+  google.protobuf.Value value = 3;
+}
+
+message ListRecordsRequest {
+  string entity = 1;
+  repeated FilterExpression filters = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+  string sort_field = 5;
+  SortDirection sort_direction = 6;
+  string search = 7;
+}
+
+message ListRecordsResponse {
+  repeated Record records = 1;
+  string next_page_token = 2;
+}
+
+message GetRecordRequest {
+  string entity = 1;
+  string id = 2;
+}
+
+message CreateRecordRequest {
+  string entity = 1;
+  google.protobuf.Struct data = 2;
+}
+
+message UpdateRecordRequest {
+  string entity = 1;
+  string id = 2;
+  google.protobuf.Struct data = 3;
+}
+
+message DeleteRecordRequest {
+  string entity = 1;
+  string id = 2;
+}
+
+message ListRecordHistoryRequest {
+  string entity = 1;
+  string id = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message RecordHistoryEntry {
+  int64 version = 1;
+  string event_type = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  string actor = 4;
+  google.protobuf.Struct data = 5;
+  string raw_payload = 6;
+  bool deleted = 7;
+}
+
+message ListRecordHistoryResponse {
+  repeated RecordHistoryEntry history = 1;
+  string next_page_token = 2;
+}
+
+message PivotRequest {
+  string entity = 1;
+  string row_field = 2;
+  string column_field = 3;
+  repeated FilterExpression filters = 4;
+}
+
+message PivotEntry {
+  string row_key = 1;
+  string column_key = 2;
+  double value = 3;
+}
+
+message PivotTotals {
+  map<string, double> row = 1;
+  map<string, double> column = 2;
+  double grand = 3;
+}
+
+message PivotResponse {
+  string row_field = 1;
+  string column_field = 2;
+  repeated PivotEntry entries = 3;
+  PivotTotals totals = 4;
+}
+
+service EntityService {
+  rpc ListEntities(google.protobuf.Empty) returns (ListEntitiesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/entities"
+    };
+  }
+
+  rpc GetEntity(GetEntityRequest) returns (EntityDefinition) {
+    option (google.api.http) = {
+      get: "/api/v1/entities/{id}"
+    };
+  }
+
+  rpc ListRecords(ListRecordsRequest) returns (ListRecordsResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/entities/{entity}/search"
+      body: "*"
+      additional_bindings {
+        get: "/api/v1/entities/{entity}"
+      }
+    };
+  }
+
+  rpc GetRecord(GetRecordRequest) returns (Record) {
+    option (google.api.http) = {
+      get: "/api/v1/entities/{entity}/{id}"
+    };
+  }
+
+  rpc CreateRecord(CreateRecordRequest) returns (Record) {
+    option (google.api.http) = {
+      post: "/api/v1/entities/{entity}"
+      body: "*"
+    };
+  }
+
+  rpc UpdateRecord(UpdateRecordRequest) returns (Record) {
+    option (google.api.http) = {
+      put: "/api/v1/entities/{entity}/{id}"
+      body: "*"
+    };
+  }
+
+  rpc DeleteRecord(DeleteRecordRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/api/v1/entities/{entity}/{id}"
+    };
+  }
+
+  rpc ListRecordHistory(ListRecordHistoryRequest) returns (ListRecordHistoryResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/entities/{entity}/{id}/history"
+    };
+  }
+
+  rpc PivotRecords(PivotRequest) returns (PivotResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/entities/{entity}/pivot"
+      body: "*"
+    };
+  }
+}

@@ -1,6 +1,6 @@
 .idea
-**/*.pb.gw.go
-**/*.pb.go
+#**/*.pb.gw.go
+#**/*.pb.go
 openapi
 **/node_modules
 node_modules
