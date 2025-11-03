@@ -24,7 +24,6 @@ import (
 	"github.com/tonica-go/tonica/pkg/tonica/modules/workflows"
 	obs "github.com/tonica-go/tonica/pkg/tonica/observabillity"
 	"github.com/tonica-go/tonica/pkg/tonica/registry"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -158,12 +157,19 @@ func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 	return gwmux
 }
 
-func (a *App) registerMetrics(_ context.Context) {
+func (a *App) registerMetrics(ctx context.Context, o *obs.Observability) {
 	router := a.metricRouter
 
 	router.Use(gin.Recovery())
 	router.Use(obs.HTTPLogger())
-	metrics.GetHandler(a.GetMetricManager(), router)
+
+	// Use OpenTelemetry metrics handler instead of old metrics.Manager
+	if o != nil && o.MetricsHandler != nil {
+		router.GET("/metrics", gin.WrapH(o.MetricsHandler))
+	} else {
+		// Fallback to old handler if obs not available
+		metrics.GetHandler(a.GetMetricManager(), router)
+	}
 
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -198,7 +204,7 @@ func (a *App) registerMetrics(_ context.Context) {
 func (a *App) registerAPI(ctx context.Context) {
 	router := a.router
 	router.Use(gin.Recovery())
-	router.Use(otelgin.Middleware(a.Name + "-http"))
+	router.Use(obs.HTTPTracing(a.Name + "-http"))
 	router.Use(obs.RequestID())
 	router.Use(obs.HTTPLogger())
 	router.Use(cors.New(buildCORSConfig()))
@@ -409,8 +415,8 @@ func (a *App) run(ctx context.Context, errCh chan error) {
 
 const gatewayCount = 1
 
-func (a *App) runAio(ctx context.Context) {
-	go a.registerMetrics(ctx)
+func (a *App) runAio(ctx context.Context, o *obs.Observability) {
+	go a.registerMetrics(ctx, o)
 	errCh := make(chan error, gatewayCount+a.GetRegistry().GetCountWorkers()+a.GetRegistry().GetCountConsumers()+a.GetRegistry().GetCountServices()+a.GetRegistry().GetCountServices())
 	a.registerServices(ctx, errCh)
 	go a.registerAPI(ctx)
@@ -420,29 +426,29 @@ func (a *App) runAio(ctx context.Context) {
 	a.run(ctx, errCh)
 }
 
-func (a *App) runService(ctx context.Context) {
-	go a.registerMetrics(ctx)
+func (a *App) runService(ctx context.Context, o *obs.Observability) {
+	go a.registerMetrics(ctx, o)
 	errCh := make(chan error, a.GetRegistry().GetCountServices())
 	a.registerServices(ctx, errCh)
 	a.run(ctx, errCh)
 }
 
-func (a *App) runWorker(ctx context.Context) {
-	go a.registerMetrics(ctx)
+func (a *App) runWorker(ctx context.Context, o *obs.Observability) {
+	go a.registerMetrics(ctx, o)
 	go a.registerWorkers(ctx)
 	errCh := make(chan error, a.GetRegistry().GetCountWorkers())
 	a.run(ctx, errCh)
 }
 
-func (a *App) runConsumer(ctx context.Context) {
-	go a.registerMetrics(ctx)
+func (a *App) runConsumer(ctx context.Context, o *obs.Observability) {
+	go a.registerMetrics(ctx, o)
 	go a.registerConsumers(ctx)
 	errCh := make(chan error, a.GetRegistry().GetCountConsumers())
 	a.run(ctx, errCh)
 }
 
-func (a *App) runGateway(ctx context.Context) {
-	go a.registerMetrics(ctx)
+func (a *App) runGateway(ctx context.Context, o *obs.Observability) {
+	go a.registerMetrics(ctx, o)
 	go a.registerAPI(ctx)
 	errCh := make(chan error, gatewayCount)
 	a.run(ctx, errCh)

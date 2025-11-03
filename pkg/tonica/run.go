@@ -22,15 +22,15 @@ func (a *App) Run() error {
 
 	switch a.cfg.GetRunMode() {
 	case config.ModeAIO:
-		a.runAio(ctx)
+		a.runAio(ctx, o)
 	case config.ModeService:
-		a.runService(ctx)
+		a.runService(ctx, o)
 	case config.ModeWorker:
-		a.runWorker(ctx)
+		a.runWorker(ctx, o)
 	case config.ModeConsumer:
-		a.runConsumer(ctx)
+		a.runConsumer(ctx, o)
 	case config.ModeGateway:
-		a.runGateway(ctx)
+		a.runGateway(ctx, o)
 	default:
 		return nil
 	}

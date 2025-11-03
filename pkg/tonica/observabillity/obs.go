@@ -89,10 +89,27 @@ func Init(ctx context.Context, cfg Config) (*Observability, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Wire the exporter into the OTel metrics SDK
+
+	// Define reasonable histogram buckets for SLA (up to 60s)
+	// In milliseconds: 10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s, 60s
+	// todo make configurable
+	defaultBuckets := []float64{10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000}
+
+	// Create a view to apply custom buckets to all histograms
+	customView := sdkmetric.NewView(
+		sdkmetric.Instrument{Kind: sdkmetric.InstrumentKindHistogram},
+		sdkmetric.Stream{
+			Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+				Boundaries: defaultBuckets,
+			},
+		},
+	)
+
+	// Wire the exporter into the OTel metrics SDK with custom views
 	mp := sdkmetric.NewMeterProvider(
 		sdkmetric.WithReader(prom),
 		sdkmetric.WithResource(res),
+		sdkmetric.WithView(customView),
 	)
 	otel.SetMeterProvider(mp)
 	handler := promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
@@ -101,6 +118,52 @@ func Init(ctx context.Context, cfg Config) (*Observability, error) {
 		MetricsHandler: handler,
 		Shutdown:       func(ctx context.Context) error { return tp.Shutdown(ctx) },
 	}, nil
+}
+
+// HTTPTracing creates a middleware that starts a span with the actual URL path.
+// Unlike otelgin.Middleware which uses c.FullPath() (route pattern like "/api/v1/*any"),
+// this uses c.Request.URL.Path to get the actual path like "/api/v1/workflows/search".
+func HTTPTracing(serviceName string) gin.HandlerFunc {
+	tracer := otel.Tracer("github.com/gin-gonic/gin/otelgin")
+	return func(c *gin.Context) {
+		// Skip observability endpoints
+		if isObsPath(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+
+		ctx := c.Request.Context()
+		// Extract propagated context from HTTP headers
+		ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(c.Request.Header))
+
+		// Use actual URL path instead of route pattern
+		spanName := c.Request.Method + " " + c.Request.URL.Path
+		opts := []trace.SpanStartOption{
+			trace.WithAttributes(
+				semconv.HTTPRequestMethodKey.String(c.Request.Method),
+				semconv.URLPath(c.Request.URL.Path),
+				semconv.URLFull(c.Request.URL.String()),
+				semconv.URLScheme(c.Request.URL.Scheme),
+				attribute.String("http.route", c.FullPath()),
+				attribute.String("server.address", serviceName),
+			),
+			trace.WithSpanKind(trace.SpanKindServer),
+		}
+
+		ctx, span := tracer.Start(ctx, spanName, opts...)
+		defer span.End()
+
+		// Update request context with span context
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+
+		// Record response status
+		status := c.Writer.Status()
+		span.SetAttributes(semconv.HTTPResponseStatusCode(status))
+		if status >= 400 {
+			span.SetAttributes(attribute.Bool("error", true))
+		}
+	}
 }
 
 // RequestID adds/propagates X-Request-ID.
@@ -172,10 +235,13 @@ func initHTTPInstruments() {
 		"http_requests_total",
 		metric.WithDescription("Total number of HTTP requests"),
 	)
+	// Define reasonable buckets for SLA up to 60 seconds
+	// Buckets: 10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s, 60s
 	httpLatencyMs, _ = meter.Float64Histogram(
 		"http_request_duration_ms",
 		metric.WithUnit("ms"),
 		metric.WithDescription("HTTP request duration in milliseconds"),
+		metric.WithExplicitBucketBoundaries(10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000),
 	)
 }
 
@@ -184,9 +250,10 @@ func recordHTTPMetrics(c *gin.Context, d time.Duration) {
 		return
 	}
 	httpMetricsOnce.Do(initHTTPInstruments)
+	// Use actual URL path for metrics instead of route pattern
 	attrs := []attribute.KeyValue{
 		attribute.String("method", c.Request.Method),
-		attribute.String("route", c.FullPath()),
+		attribute.String("route", c.Request.URL.Path),
 		attribute.Int("status", c.Writer.Status()),
 	}
 	ctx := c.Request.Context()

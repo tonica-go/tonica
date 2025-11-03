@@ -2,11 +2,13 @@ package tonica
 
 import (
 	"log/slog"
+	"os"
 
 	"github.com/tonica-go/tonica/pkg/tonica/config"
+	"go.opentelemetry.io/otel"
 	"go.temporal.io/sdk/client"
-
-	"os"
+	oteltemporal "go.temporal.io/sdk/contrib/opentelemetry"
+	"go.temporal.io/sdk/interceptor"
 )
 
 func GetTemporalClient(namespace string) (client.Client, error) {
@@ -14,10 +16,34 @@ func GetTemporalClient(namespace string) (client.Client, error) {
 	if namespace == "" {
 		namespace = config.GetEnv("TEMPORAL_NAMESPACE", "default")
 	}
-	return client.Dial(client.Options{
+
+	// Create OpenTelemetry tracing interceptor for trace propagation
+	ti, err := oteltemporal.NewTracingInterceptor(oteltemporal.TracerOptions{
+		TextMapPropagator: otel.GetTextMapPropagator(),
+	})
+	if err != nil {
+		slog.Warn("failed to create temporal tracing interceptor", "error", err)
+	}
+
+	// Create OpenTelemetry metrics handler
+	metricsHandler := oteltemporal.NewMetricsHandler(oteltemporal.MetricsHandlerOptions{
+		Meter: otel.GetMeterProvider().Meter("temporal-client"),
+	})
+
+	opts := client.Options{
 		HostPort:  temporalAddr,
 		Namespace: namespace,
-	})
+	}
+
+	// Add interceptor if successfully created
+	if ti != nil {
+		opts.Interceptors = []interceptor.ClientInterceptor{ti.(interceptor.ClientInterceptor)}
+	}
+
+	// Add metrics handler
+	opts.MetricsHandler = metricsHandler
+
+	return client.Dial(opts)
 }
 
 func MustGetTemporalClient(namespace string) client.Client {

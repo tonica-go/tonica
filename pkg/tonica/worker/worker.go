@@ -58,6 +58,7 @@ func (app *Worker) GetQueue() string {
 
 func (app *Worker) Start() error {
 	ti, _ := oteltemporal.NewTracingInterceptor(oteltemporal.TracerOptions{TextMapPropagator: otel.GetTextMapPropagator()})
+
 	w := worker.New(app.client, app.queue, worker.Options{Interceptors: []interceptor.WorkerInterceptor{ti.(interceptor.WorkerInterceptor)}})
 
 	for _, activity := range app.activities {

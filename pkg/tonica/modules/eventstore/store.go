@@ -7,6 +7,8 @@ import (
 	"fmt"
 
 	"github.com/uptrace/bun"
+	"github.com/uptrace/opentelemetry-go-extra/otelsql"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
 	// native drivers
 	_ "github.com/go-sql-driver/mysql"
@@ -64,14 +66,25 @@ func NewFromBun(ctx context.Context, bunDB *bun.DB) (Store, error) {
 	// Detect dialect from bun driver name
 	dialect := "postgres"
 	dialectName := bunDB.Dialect().Name().String()
+	var dbSystem string
 	switch dialectName {
 	case "pg":
 		dialect = "postgres"
+		dbSystem = "postgresql"
 	case "mysql":
 		dialect = "mysql"
+		dbSystem = "mysql"
 	case "sqlite", "sqlite3":
 		dialect = "sqlite"
+		dbSystem = "sqlite"
 	}
+
+	// Register OpenTelemetry metrics for sql.DB stats
+	// This will expose connection pool metrics
+	otelsql.ReportDBStatsMetrics(sqlDB,
+		otelsql.WithAttributes(semconv.DBSystemKey.String(dbSystem)),
+		otelsql.WithDBName(dialect),
+	)
 
 	store := &sqlStore{db: sqlDB, dialect: dialect}
 	if err := store.ensureSchema(ctx); err != nil {
@@ -82,7 +95,11 @@ func NewFromBun(ctx context.Context, bunDB *bun.DB) (Store, error) {
 }
 
 func newSQLiteStore(ctx context.Context, dsn string) (Store, error) {
-	db, err := sql.Open("sqlite", dsn)
+	// Use otelsql.Open to get a traced sql.DB
+	db, err := otelsql.Open("sqlite", dsn,
+		otelsql.WithAttributes(semconv.DBSystemKey.String("sqlite")),
+		otelsql.WithDBName("sqlite"),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -100,25 +117,11 @@ func newSQLiteStore(ctx context.Context, dsn string) (Store, error) {
 }
 
 func newPostgresStore(ctx context.Context, dsn string) (Store, error) {
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := db.PingContext(ctx); err != nil {
-		return nil, err
-	}
-
-	store := &sqlStore{db: db, dialect: "sqlite"}
-	if err := store.ensureSchema(ctx); err != nil {
-		return nil, err
-	}
-
-	return store, nil
-}
-
-func newMySQLStore(ctx context.Context, dsn string) (Store, error) {
-	db, err := sql.Open("postgres", dsn)
+	// Use otelsql.Open to get a traced sql.DB
+	db, err := otelsql.Open("postgres", dsn,
+		otelsql.WithAttributes(semconv.DBSystemKey.String("postgresql")),
+		otelsql.WithDBName("postgres"),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +131,28 @@ func newMySQLStore(ctx context.Context, dsn string) (Store, error) {
 	}
 
 	store := &sqlStore{db: db, dialect: "postgres"}
+	if err := store.ensureSchema(ctx); err != nil {
+		return nil, err
+	}
+
+	return store, nil
+}
+
+func newMySQLStore(ctx context.Context, dsn string) (Store, error) {
+	// Use otelsql.Open to get a traced sql.DB
+	db, err := otelsql.Open("mysql", dsn,
+		otelsql.WithAttributes(semconv.DBSystemKey.String("mysql")),
+		otelsql.WithDBName("mysql"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.PingContext(ctx); err != nil {
+		return nil, err
+	}
+
+	store := &sqlStore{db: db, dialect: "mysql"}
 	if err := store.ensureSchema(ctx); err != nil {
 		return nil, err
 	}
