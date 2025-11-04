@@ -16,6 +16,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// ErrConcurrencyConflict indicates an optimistic concurrency check failed.
+// This error should be retried by the caller.
+var ErrConcurrencyConflict = errors.New("concurrency conflict: aggregate was modified concurrently")
+
 // Event represents a domain event persisted in the store.
 type Event struct {
 	ID            int64
@@ -234,7 +238,7 @@ func (s *sqlStore) Append(ctx context.Context, streamID string, expectedVersion 
 	}
 
 	if expectedVersion >= 0 && currentVersion.Valid && currentVersion.Int64 != expectedVersion {
-		return errors.New("concurrency conflict")
+		return ErrConcurrencyConflict
 	}
 
 	stmt, err := tx.PrepareContext(ctx, `
@@ -250,11 +254,20 @@ VALUES ($1, $2, $3, $4, $5, $6)
 	for _, evt := range events {
 		version++
 		if _, err := stmt.ExecContext(ctx, streamID, evt.AggregateType, version, evt.Type, evt.Payload, evt.Metadata); err != nil {
+			// Check if error is a unique constraint violation on (aggregate_id, version)
+			// This can happen in race conditions even after the version check
+			if isUniqueConstraintViolation(err) {
+				return ErrConcurrencyConflict
+			}
 			return err
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
+		// Check if commit fails due to unique constraint violation
+		if isUniqueConstraintViolation(err) {
+			return ErrConcurrencyConflict
+		}
 		return err
 	}
 
@@ -288,4 +301,47 @@ ORDER BY version
 
 func (s *sqlStore) Close(ctx context.Context) error {
 	return s.db.Close()
+}
+
+// isUniqueConstraintViolation checks if an error is a unique constraint violation
+// across different database drivers
+func isUniqueConstraintViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errMsg := err.Error()
+
+	// PostgreSQL: error code 23505
+	// Error message contains: "duplicate key value violates unique constraint"
+	if containsAny(errMsg, "duplicate key", "23505", "unique constraint") {
+		return true
+	}
+
+	// MySQL: error code 1062
+	// Error message contains: "Duplicate entry"
+	if containsAny(errMsg, "Duplicate entry", "1062") {
+		return true
+	}
+
+	// SQLite: UNIQUE constraint failed
+	if containsAny(errMsg, "UNIQUE constraint failed") {
+		return true
+	}
+
+	return false
+}
+
+// containsAny checks if a string contains any of the given substrings
+func containsAny(s string, substrings ...string) bool {
+	for _, substr := range substrings {
+		if len(substr) > 0 && len(s) >= len(substr) {
+			for i := 0; i <= len(s)-len(substr); i++ {
+				if s[i:i+len(substr)] == substr {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

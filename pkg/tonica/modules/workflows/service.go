@@ -27,7 +27,9 @@ func NewService(client client.Client) *Service {
 }
 
 // Trigger schedules a workflow execution in Temporal.
-func (s *Service) Trigger(ctx context.Context, workflow string, entity string, recordID string, input map[string]string) (string, string, error) {
+// If waitForCompletion is true, blocks until workflow completes and returns final status.
+// If waitForCompletion is false, returns immediately after starting workflow with status "started".
+func (s *Service) Trigger(ctx context.Context, workflow string, entity string, recordID string, input map[string]string, waitForCompletion bool) (string, string, error) {
 	if s.client == nil {
 		return "", "", fmt.Errorf("temporal client unavailable")
 	}
@@ -54,6 +56,12 @@ func (s *Service) Trigger(ctx context.Context, workflow string, entity string, r
 		return "", "", err
 	}
 
+	// If not waiting for completion, return immediately with "started" status
+	if !waitForCompletion {
+		return run.GetID(), "started", nil
+	}
+
+	// Wait for workflow completion
 	result := "unknown"
 	var resultObject WorkflowOutput
 	if err := run.Get(ctx, &resultObject); err != nil {

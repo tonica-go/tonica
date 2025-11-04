@@ -5,12 +5,17 @@ import (
 	"os"
 
 	"github.com/tonica-go/tonica/pkg/tonica/config"
+	"github.com/tonica-go/tonica/pkg/tonica/identity"
 	"go.opentelemetry.io/otel"
 	"go.temporal.io/sdk/client"
 	oteltemporal "go.temporal.io/sdk/contrib/opentelemetry"
 	"go.temporal.io/sdk/interceptor"
+	"go.temporal.io/sdk/workflow"
 )
 
+// GetTemporalClient creates a Temporal client with observability and identity propagation
+// The client automatically propagates OpenTelemetry traces, metrics, and user identity
+// through workflows and activities
 func GetTemporalClient(namespace string) (client.Client, error) {
 	temporalAddr := config.GetEnv("TEMPORAL_ADDR", "localhost:7233")
 	if namespace == "" {
@@ -42,6 +47,12 @@ func GetTemporalClient(namespace string) (client.Client, error) {
 
 	// Add metrics handler
 	opts.MetricsHandler = metricsHandler
+
+	// Add identity context propagator for automatic identity propagation
+	// This allows user authentication info to flow through workflows and activities
+	opts.ContextPropagators = []workflow.ContextPropagator{
+		identity.NewIdentityContextPropagator(),
+	}
 
 	return client.Dial(opts)
 }

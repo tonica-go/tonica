@@ -207,6 +207,7 @@ type TriggerWorkflowRequest struct {
 	Entity        string                 `protobuf:"bytes,2,opt,name=entity,proto3" json:"entity,omitempty"`
 	RecordId      string                 `protobuf:"bytes,3,opt,name=record_id,json=recordId,proto3" json:"record_id,omitempty"`
 	Input         map[string]string      `protobuf:"bytes,4,rep,name=input,proto3" json:"input,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Async         *bool                  `protobuf:"varint,5,opt,name=async,proto3,oneof" json:"async,omitempty"` // If true, returns immediately without waiting for completion. Default: false (waits for completion)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -267,6 +268,13 @@ func (x *TriggerWorkflowRequest) GetInput() map[string]string {
 		return x.Input
 	}
 	return nil
+}
+
+func (x *TriggerWorkflowRequest) GetAsync() bool {
+	if x != nil && x.Async != nil {
+		return *x.Async
+	}
+	return false
 }
 
 type TriggerWorkflowResponse struct {
@@ -1901,16 +1909,18 @@ var File_workflows_service_proto protoreflect.FileDescriptor
 
 const file_workflows_service_proto_rawDesc = "" +
 	"\n" +
-	"\x17workflows/service.proto\x12\vworkflow.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xe9\x01\n" +
+	"\x17workflows/service.proto\x12\vworkflow.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x8e\x02\n" +
 	"\x16TriggerWorkflowRequest\x12\x1a\n" +
 	"\bworkflow\x18\x01 \x01(\tR\bworkflow\x12\x16\n" +
 	"\x06entity\x18\x02 \x01(\tR\x06entity\x12\x1b\n" +
 	"\trecord_id\x18\x03 \x01(\tR\brecordId\x12D\n" +
-	"\x05input\x18\x04 \x03(\v2..workflow.v1.TriggerWorkflowRequest.InputEntryR\x05input\x1a8\n" +
+	"\x05input\x18\x04 \x03(\v2..workflow.v1.TriggerWorkflowRequest.InputEntryR\x05input\x12\x19\n" +
+	"\x05async\x18\x05 \x01(\bH\x00R\x05async\x88\x01\x01\x1a8\n" +
 	"\n" +
 	"InputEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"T\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\b\n" +
+	"\x06_async\"T\n" +
 	"\x17TriggerWorkflowResponse\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\"\x17\n" +
@@ -2222,6 +2232,7 @@ func file_workflows_service_proto_init() {
 	if File_workflows_service_proto != nil {
 		return
 	}
+	file_workflows_service_proto_msgTypes[0].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

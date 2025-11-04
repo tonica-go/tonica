@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/tonica-go/tonica/pkg/tonica/cmd/docker_compose"
 	"github.com/tonica-go/tonica/pkg/tonica/cmd/project"
 	"github.com/tonica-go/tonica/pkg/tonica/cmd/proto_init"
 	"github.com/tonica-go/tonica/pkg/tonica/cmd/wrap"
@@ -75,6 +76,17 @@ func Run() {
 				Name: "install",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					err := project.InstallGoDeps()
+					if err != nil {
+						return err
+					}
+					return nil
+				},
+			},
+			{
+				Name:  "compose",
+				Usage: "Generate docker-compose.yml with selected services",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					err := docker_compose.GenerateDockerCompose()
 					if err != nil {
 						return err
 					}

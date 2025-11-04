@@ -54,12 +54,19 @@ type grpcHandler struct {
 }
 
 func (h *grpcHandler) TriggerWorkflow(ctx context.Context, req *pb.TriggerWorkflowRequest) (*pb.TriggerWorkflowResponse, error) {
+	// Default to waiting for completion (async=false) for backward compatibility
+	waitForCompletion := true
+	if req.Async != nil && req.GetAsync() {
+		waitForCompletion = false
+	}
+
 	executionID, status, err := h.svc.Trigger(
 		ctx,
 		req.GetWorkflow(),
 		req.GetEntity(),
 		req.GetRecordId(),
 		req.GetInput(),
+		waitForCompletion,
 	)
 	if err != nil {
 		return nil, err

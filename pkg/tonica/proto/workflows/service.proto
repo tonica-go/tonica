@@ -16,6 +16,7 @@ message TriggerWorkflowRequest {
   string entity = 2;
   string record_id = 3;
   map<string, string> input = 4;
+  optional bool async = 5; // If true, returns immediately without waiting for completion. Default: false (waits for completion)
 }
 
 message TriggerWorkflowResponse {

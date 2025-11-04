@@ -910,6 +910,10 @@ func (s *Service) appendRecordEvent(ctx context.Context, entityID, recordID stri
 	}
 	streamID := recordStreamID(entityID, recordID)
 	if err := s.store.Append(ctx, streamID, expectedVersion, []eventstore.Event{event}); err != nil {
+		// Preserve concurrency conflict errors for retry logic
+		if errors.Is(err, eventstore.ErrConcurrencyConflict) {
+			return fmt.Errorf("%w: %s/%s at version %d", eventstore.ErrConcurrencyConflict, entityID, recordID, expectedVersion)
+		}
 		return err
 	}
 	legacyID := legacyRecordStreamID(entityID, recordID)
