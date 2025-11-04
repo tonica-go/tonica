@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"strings"
@@ -90,17 +91,16 @@ func Init(ctx context.Context, cfg Config) (*Observability, error) {
 		return nil, err
 	}
 
-	// Define reasonable histogram buckets for SLA (up to 60s)
+	// Get histogram buckets from env or use defaults
 	// In milliseconds: 10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s, 60s
-	// todo make configurable
-	defaultBuckets := []float64{10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000}
+	buckets := getHistogramBuckets()
 
 	// Create a view to apply custom buckets to all histograms
 	customView := sdkmetric.NewView(
 		sdkmetric.Instrument{Kind: sdkmetric.InstrumentKindHistogram},
 		sdkmetric.Stream{
 			Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
-				Boundaries: defaultBuckets,
+				Boundaries: buckets,
 			},
 		},
 	)
@@ -120,14 +120,47 @@ func Init(ctx context.Context, cfg Config) (*Observability, error) {
 	}, nil
 }
 
+// getHistogramBuckets returns histogram buckets from env or defaults
+func getHistogramBuckets() []float64 {
+	// Default buckets in milliseconds: 10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s, 60s
+	defaultBuckets := []float64{10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000}
+
+	bucketsStr := strings.TrimSpace(os.Getenv("OTEL_HISTOGRAM_BUCKETS_MS"))
+	if bucketsStr == "" {
+		return defaultBuckets
+	}
+
+	// Parse comma-separated buckets from env
+	parts := strings.Split(bucketsStr, ",")
+	buckets := make([]float64, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		val, err := strconv.ParseFloat(p, 64)
+		if err != nil {
+			slog.Warn("failed to parse histogram bucket value, using defaults", "value", p, "error", err)
+			return defaultBuckets
+		}
+		buckets = append(buckets, val)
+	}
+
+	if len(buckets) == 0 {
+		return defaultBuckets
+	}
+
+	return buckets
+}
+
 // HTTPTracing creates a middleware that starts a span with the actual URL path.
 // Unlike otelgin.Middleware which uses c.FullPath() (route pattern like "/api/v1/*any"),
 // this uses c.Request.URL.Path to get the actual path like "/api/v1/workflows/search".
 func HTTPTracing(serviceName string) gin.HandlerFunc {
 	tracer := otel.Tracer("github.com/gin-gonic/gin/otelgin")
 	return func(c *gin.Context) {
-		// Skip observability endpoints
-		if isObsPath(c.Request.URL.Path) {
+		// Skip observability endpoints and OPTIONS requests
+		if isObsPath(c.Request.URL.Path) || c.Request.Method == http.MethodOptions {
 			c.Next()
 			return
 		}
@@ -182,8 +215,8 @@ func RequestID() gin.HandlerFunc {
 // HTTPLogger logs request/response with slog and trace id.
 func HTTPLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Skip noisy endpoints from logging/metrics
-		if isObsPath(c.Request.URL.Path) {
+		// Skip noisy endpoints and OPTIONS requests from logging/metrics
+		if isObsPath(c.Request.URL.Path) || c.Request.Method == http.MethodOptions {
 			c.Next()
 			return
 		}
@@ -235,18 +268,19 @@ func initHTTPInstruments() {
 		"http_requests_total",
 		metric.WithDescription("Total number of HTTP requests"),
 	)
-	// Define reasonable buckets for SLA up to 60 seconds
-	// Buckets: 10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s, 60s
+	// Get histogram buckets from env or use defaults
+	buckets := getHistogramBuckets()
 	httpLatencyMs, _ = meter.Float64Histogram(
 		"http_request_duration_ms",
 		metric.WithUnit("ms"),
 		metric.WithDescription("HTTP request duration in milliseconds"),
-		metric.WithExplicitBucketBoundaries(10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000),
+		metric.WithExplicitBucketBoundaries(buckets...),
 	)
 }
 
 func recordHTTPMetrics(c *gin.Context, d time.Duration) {
-	if isObsPath(c.Request.URL.Path) {
+	// Skip observability endpoints and OPTIONS requests
+	if isObsPath(c.Request.URL.Path) || c.Request.Method == http.MethodOptions {
 		return
 	}
 	httpMetricsOnce.Do(initHTTPInstruments)
