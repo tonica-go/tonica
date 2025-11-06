@@ -3,7 +3,7 @@ package report
 import (
 	"context"
 
-	reportsv1 "github.com/tonica-go/tonica/example/dev/proto/reports/v1"
+	reportsv1 "github.com/tonica-go/tonica/examples/dev/proto/reports/v1"
 	"github.com/tonica-go/tonica/pkg/tonica/service"
 	"google.golang.org/grpc"
 )

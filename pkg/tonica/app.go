@@ -53,6 +53,15 @@ type App struct {
 
 	metricsManager metrics.Manager
 	shutdown       *Shutdown
+
+	// routeMiddlewares defines middleware for specific route patterns
+	routeMiddlewares []RouteMiddleware
+}
+
+// RouteMiddleware defines middleware for specific route patterns
+type RouteMiddleware struct {
+	PathPrefixes []string          // e.g., ["/public", "/api/v1/auth"]
+	Middlewares  []gin.HandlerFunc // middleware to apply to these paths
 }
 
 func NewApp(options ...AppOption) *App {
@@ -262,7 +271,26 @@ func (a *App) registerAPI(ctx context.Context) {
 		router.GET("/docs", gin.WrapF(docs))
 	}
 
-	router.Any(a.apiPrefix+"/*any", WrapH(a.registerGateway(ctx)))
+	// Register gateway routes with middleware
+	gwHandler := a.registerGateway(ctx)
+
+	if len(a.routeMiddlewares) > 0 {
+		// Register specific route patterns with their middleware
+		// These will be matched first before NoRoute
+		for _, rm := range a.routeMiddlewares {
+			for _, prefix := range rm.PathPrefixes {
+				group := router.Group(prefix)
+				group.Use(rm.Middlewares...)
+				// Register all HTTP methods for the group
+				group.Any("/*any", WrapH(gwHandler))
+			}
+		}
+	}
+
+	// Use NoRoute as fallback for all unmatched routes
+	// This avoids conflicts with specific routes like /openapi.json, /docs
+	// NoRoute is called only when no other route matches
+	router.NoRoute(WrapH(gwHandler))
 
 	addr := config.GetEnv("APP_HTTP_ADDR", ":8080")
 	a.GetLogger().Println("http server running, listening addr", addr)

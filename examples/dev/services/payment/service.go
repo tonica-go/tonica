@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	paymentv1 "github.com/tonica-go/tonica/example/dev/proto/payment/v1"
+	paymentv1 "github.com/tonica-go/tonica/examples/dev/proto/payment/v1"
 	"github.com/tonica-go/tonica/pkg/tonica/service"
 	"github.com/tonica-go/tonica/pkg/tonica/storage/pubsub"
 	"google.golang.org/grpc"

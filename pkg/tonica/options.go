@@ -3,6 +3,7 @@ package tonica
 import (
 	"log"
 
+	"github.com/gin-gonic/gin"
 	"github.com/tonica-go/tonica/pkg/tonica/config"
 	"github.com/tonica-go/tonica/pkg/tonica/registry"
 )
@@ -64,5 +65,19 @@ func WithEntityService(definitionsPath, dbDriver, dsn string) AppOption {
 		a.entityDefinitions = definitionsPath
 		a.entityDriver = dbDriver
 		a.entityDSN = dsn
+	}
+}
+
+// WithRouteMiddleware adds middleware for specific route patterns
+// Example:
+//
+//	WithRouteMiddleware([]string{"/public"}, authMiddleware1, authMiddleware2)
+//	WithRouteMiddleware([]string{"/api/v1", "/api/v2"}, rateLimitMiddleware)
+func WithRouteMiddleware(pathPrefixes []string, middlewares ...gin.HandlerFunc) AppOption {
+	return func(a *App) {
+		a.routeMiddlewares = append(a.routeMiddlewares, RouteMiddleware{
+			PathPrefixes: pathPrefixes,
+			Middlewares:  middlewares,
+		})
 	}
 }

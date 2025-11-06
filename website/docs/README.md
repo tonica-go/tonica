@@ -12,8 +12,9 @@ Welcome to the Tonica framework documentation! Tonica is a modern, proto-first G
 4. [**Run Modes**](./run-modes.md) - AIO, Service, Worker, Consumer, and Gateway modes explained
 5. [**Configuration**](./configuration.md) - All configuration options and environment variables
 6. [**Custom Routes**](./custom-routes.md) - Adding custom HTTP routes with OpenAPI documentation
-7. [**Testing Guide**](./testing.md) - How to test your Tonica applications
-8. [**Best Practices**](./best-practices.md) - Patterns, anti-patterns, and recommendations
+7. [**Middleware Routing Guide**](./middleware-routing.md) - Adding custom HTTP route groups with middleware
+8. [**Testing Guide**](./testing.md) - How to test your Tonica applications
+9. [**Best Practices**](./best-practices.md) - Patterns, anti-patterns, and recommendations
 
 ### Additional Resources
 
