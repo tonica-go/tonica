@@ -68,6 +68,13 @@ func WithEntityService(definitionsPath, dbDriver, dsn string) AppOption {
 	}
 }
 
+// WithGatewayProtoMessages enables the use of proto messages fields in the API Gateway (snakecase instead of camelCase)
+func WithGatewayProtoMessages() AppOption {
+	return func(a *App) {
+		a.useGatewayProtoMessages = true
+	}
+}
+
 // WithRouteMiddleware adds middleware for specific route patterns
 // Example:
 //

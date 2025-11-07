@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type App struct {
@@ -35,10 +36,11 @@ type App struct {
 	logger   *log.Logger
 	cfg      *config.Config
 
-	spec         string
-	specUrl      string
-	customRoutes []RouteMetadata
-	apiPrefix    string
+	spec                    string
+	specUrl                 string
+	customRoutes            []RouteMetadata
+	apiPrefix               string
+	useGatewayProtoMessages bool
 
 	isWorkflowService bool
 	workflowNamespace string
@@ -118,7 +120,7 @@ func initObs(ctx context.Context, service string) (*obs.Observability, error) {
 }
 
 func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
-	gwmux := runtime.NewServeMux(
+	options := []runtime.ServeMuxOption{
 		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
 			// Forward selected headers to gRPC metadata
 			switch strings.ToLower(key) {
@@ -143,7 +145,20 @@ func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 
 			return md
 		}),
-	)
+	}
+
+	if a.useGatewayProtoMessages {
+		options = append(options, runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
+			MarshalOptions: protojson.MarshalOptions{
+				UseProtoNames: true,
+			},
+			UnmarshalOptions: protojson.UnmarshalOptions{
+				DiscardUnknown: true,
+			},
+		}))
+	}
+
+	gwmux := runtime.NewServeMux(options...)
 	dialOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		obs.GRPCClientStats(),
