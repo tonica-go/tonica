@@ -306,6 +306,7 @@ func WrapH(h http.Handler) gin.HandlerFunc {
 			h.ServeHTTP(c.Writer, r)
 			return
 		}
+		c.Status(http.StatusOK)
 		h.ServeHTTP(c.Writer, c.Request)
 	}
 }
