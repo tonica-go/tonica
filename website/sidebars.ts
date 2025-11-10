@@ -43,6 +43,8 @@ const sidebars: SidebarsConfig = {
       label: 'Guides',
       items: [
         'custom-routes',
+        'migrations',
+        'deployment',
         'testing',
         'best-practices',
       ],

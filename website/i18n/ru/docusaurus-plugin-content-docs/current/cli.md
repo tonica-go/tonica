@@ -1,320 +1,152 @@
-# Tonica CLI
+# Утилита командной строки (CLI)
 
-Tonica включает инструмент командной строки, который помогает быстро создавать проекты и генерировать шаблонный код из Protocol Buffers.
+Tonica поставляется с утилитой командной строки `tonica`, которая помогает быстро создавать проекты, генерировать шаблоны для сервисов и управлять локальным окружением.
 
 ## Установка
 
-Установите инструмент Tonica CLI:
+Для установки CLI выполните команду:
 
 ```bash
 go install github.com/tonica-go/tonica@latest
 ```
 
-Убедитесь, что `$GOPATH/bin` находится в вашем `PATH`.
-
-## Предварительные требования
-
-Перед использованием CLI установите необходимые инструменты:
+Эта команда скомпилирует и установит бинарный файл `tonica` в ваш `$GOPATH/bin`. Убедитесь, что эта директория добавлена в системную переменную `PATH`.
 
 ```bash
-# Install buf (Protocol Buffer tool)
-brew install buf
-
-# Install protoc plugins
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
-go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest
+export PATH=$PATH:$(go env GOPATH)/bin
 ```
 
 ## Команды
 
 ### `tonica init`
 
-Инициализирует новый проект Tonica с шаблонной структурой.
+Инициализирует новую структуру проекта Tonica в текущей директории.
 
 **Использование:**
 ```bash
-tonica init --name=PROJECT_NAME
+tonica init --name=<project_name>
 ```
 
-**Опции:**
-- `--name` (обязательно) - Название вашего проекта
+**Параметры:**
+*   `--name` (обязательный): Имя вашего проекта. Используется для нейминга в файлах конфигурации.
 
 **Пример:**
 ```bash
-mkdir myservice && cd myservice
-tonica init --name=myservice
+mkdir my-awesome-project && cd my-awesome-project
+tonica init --name=my-awesome-project
 ```
 
-**Что создается:**
+Эта команда создаст базовую структуру папок (`proto`, `services`, `openapi`) и файлы конфигурации, такие как `buf.gen.yaml`, `buf.work.yaml`, `.golangci.yml` и `.env.example`.
+
+### `tonica install`
+
+Устанавливает все необходимые Go-инструменты для компиляции Protocol Buffers. Эта команда является удобной оберткой над `go install` для нескольких зависимостей.
+
+**Использование:**
+```bash
+tonica install
 ```
-myservice/
-├── cmd/
-│   └── server/
-│       └── main.go           # Точка входа приложения
-├── internal/
-│   └── service/              # Реализации сервисов
-├── proto/                    # Определения Protocol Buffer
-│   └── myservice/
-│       └── v1/
-│           └── myservice.proto
-├── buf.gen.yaml             # Конфигурация Buf
-├── buf.yaml                 # Рабочее пространство Buf
-├── go.mod
-└── README.md
-```
+
+**Что делает:**
+Эта команда установит следующие плагины для `protoc`:
+*   `protoc-gen-go`
+*   `protoc-gen-go-grpc`
+*   `protoc-gen-grpc-gateway`
+*   `protoc-gen-openapiv2`
+
+Рекомендуется запускать эту команду один раз после `tonica init`.
 
 ### `tonica proto`
 
-Генерирует код Protocol Buffer и шаблонный код для нового сервиса.
+Создает шаблонный `.proto` файл для нового gRPC сервиса.
 
 **Использование:**
 ```bash
-tonica proto --name=SERVICE_NAME
+tonica proto --name=<service_name>
 ```
 
-**Опции:**
-- `--name` (обязательно) - Название сервиса
+**Параметры:**
+*   `--name` (обязательный): Имя нового сервиса (например, `users` или `payments`).
 
 **Пример:**
 ```bash
-tonica proto --name=userservice
+tonica proto --name=billing
 ```
 
-**Что генерируется:**
-- Файл `.proto` с базовым определением сервиса
-- Интерфейс gRPC сервиса
-- Код регистрации Gateway
-- Спецификация OpenAPI
-- Вспомогательные константы (ServiceName, ServiceAddrEnvName)
+Команда создаст файл `proto/billing/v1/billing.proto` с базовым определением сервиса, методов и сообщений. **Важно:** эта команда *только* создает `.proto` файл. Для генерации Go-кода из этого файла используйте `buf generate`.
 
-**Сгенерированные файлы:**
-```
-proto/
-└── userservice/
-    └── v1/
-        ├── userservice.proto              # Определение Proto
-        ├── userservice.pb.go              # Сгенерированный protobuf
-        ├── userservice_grpc.pb.go         # Сгенерированный gRPC сервер/клиент
-        ├── userservice.pb.gw.go           # Сгенерированный gateway
-        ├── userservice_grpc.go            # Обертка Tonica с вспомогательными функциями
-        └── userservice.swagger.json       # Спецификация OpenAPI
-```
+### `tonica wrap`
 
-### `wrap` (Продвинутый)
-
-Генерирует код-обертку Tonica из существующих `.proto` файлов. Это полезно, когда у вас есть существующие proto определения.
+Генерирует Go-код (клиент и сервер) из существующего `.proto` файла. Эта команда полезна, если вы хотите интегрировать в Tonica уже существующий или сторонний proto-файл.
 
 **Использование:**
 ```bash
-go run ./pkg/tonica/cmd/wrap --proto path/to/service.proto
+tonica wrap --proto=<path_to_proto_file>
 ```
 
-**Опции:**
-- `--proto` (обязательно) - Путь к файлу `.proto`
+**Параметры:**
+*   `--proto` (обязательный): Путь к `.proto` файлу.
 
 **Пример:**
 ```bash
-go run ./pkg/tonica/cmd/wrap --proto proto/payment/v1/payment.proto
+tonica wrap --proto=proto/billing/v1/billing.proto
 ```
 
-**Что генерируется:**
-Добавляет файл `*_grpc.go` с вспомогательными функциями и константами:
-- `ServiceName` - Константа имени сервиса
-- `ServiceAddrEnvName` - Название переменной окружения для адреса сервиса
-- Вспомогательные функции регистрации
+Эта команда сгенерирует файл `billing_grpc.go` в той же директории, содержащий полезные константы и функции-обертки для регистрации сервиса в приложении Tonica.
 
-## Процесс быстрого старта
+### `tonica compose`
 
-Вот полный процесс создания нового сервиса:
+Запускает интерактивный генератор для создания файла `docker-compose.yml`.
+
+**Использование:**
+```bash
+tonica compose
+```
+
+**Описание:**
+Эта команда задаст вам серию вопросов о том, какие сервисы вы хотите включить в ваше локальное окружение для разработки. На основе ваших ответов будет сгенерирован готовый к использованию `docker-compose.yml`.
+
+**Поддерживаемые сервисы:**
+*   **PostgreSQL:** Реляционная база данных.
+*   **Temporal:** Система для управления воркфлоу.
+*   **Redpanda:** Kafka-совместимый брокер сообщений.
+*   **Dragonfly:** Redis-совместимое хранилище в памяти.
+*   **Mailhog:** Сервер для тестирования отправки email.
+*   **Jaeger:** Система для распределенной трассировки.
+
+## Типичный процесс разработки
+
+Вот рекомендуемый порядок действий при создании нового проекта с нуля:
 
 ```bash
-# 1. Create project directory
-mkdir myservice && cd myservice
+# 1. Создайте директорию для вашего проекта
+mkdir my-app && cd my-app
 
-# 2. Initialize Tonica project
-tonica init --name=myservice
+# 2. Инициализируйте проект Tonica
+tonica init --name=my-app
 
-# 3. Generate your first service
-tonica proto --name=myservice
+# 3. Инициализируйте Go-модуль
+# Замените на ваш путь к репозиторию
+go mod init github.com/my-org/my-app
 
-# 4. Initialize Go module
-go mod init github.com/yourusername/myservice
-go mod tidy
+# 4. Установите необходимые инструменты для кодогенерации
+tonica install
 
-# 5. Run the service
-go run ./cmd/server
+# 5. Создайте свой первый сервис
+tonica proto --name=greeter
 
-# 6. Test it
-curl http://localhost:8080/docs
-```
+# 6. Отредактируйте proto/greeter/v1/greeter.proto, чтобы определить ваши методы
 
-## Пример Proto файла
-
-Когда вы запускаете `tonica proto --name=userservice`, генерируется proto файл такого вида:
-
-```protobuf
-syntax = "proto3";
-
-package userservice.v1;
-
-import "google/api/annotations.proto";
-
-option go_package = "github.com/yourorg/myservice/proto/userservice/v1;userservicev1";
-
-service UserService {
-  rpc GetUser(GetUserRequest) returns (GetUserResponse) {
-    option (google.api.http) = {
-      get: "/v1/users/{id}"
-    };
-  }
-
-  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) {
-    option (google.api.http) = {
-      post: "/v1/users"
-      body: "*"
-    };
-  }
-}
-
-message GetUserRequest {
-  string id = 1;
-}
-
-message GetUserResponse {
-  string id = 1;
-  string name = 2;
-  string email = 3;
-}
-
-message CreateUserRequest {
-  string name = 1;
-  string email = 2;
-}
-
-message CreateUserResponse {
-  string id = 1;
-  string name = 2;
-  string email = 3;
-}
-```
-
-## Сгенерированные вспомогательные константы
-
-Файл-обертка `*_grpc.go` включает полезные константы:
-
-```go
-package userservicev1
-
-const (
-    // ServiceName is the name of the service for registration
-    ServiceName = "userservice-service"
-
-    // ServiceAddrEnvName is the environment variable name for the service address
-    ServiceAddrEnvName = "USERSERVICE_SERVICE_ADDR"
-)
-
-// RegisterGRPC registers the gRPC service
-func RegisterGRPC(server *grpc.Server, impl UserServiceServer) {
-    RegisterUserServiceServer(server, impl)
-}
-
-// RegisterGateway registers the HTTP gateway
-func RegisterGateway(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
-    return RegisterUserServiceHandler(ctx, mux, conn)
-}
-```
-
-## Работа с существующими Proto
-
-Если у вас есть существующие `.proto` файлы:
-
-1. **Вариант 1: Используйте `buf generate`**
-   ```bash
-   buf generate
-   ```
-
-2. **Вариант 2: Сгенерируйте обертки Tonica**
-   ```bash
-   go run ./pkg/tonica/cmd/wrap --proto proto/myservice/v1/myservice.proto
-   ```
-
-3. **Вариант 3: Ручная настройка**
-   - Запустите protoc с необходимыми плагинами
-   - Создайте функции-обертки вручную
-
-## Конфигурация Buf
-
-Проекты Tonica используют `buf` для управления proto. Сгенерированный `buf.gen.yaml`:
-
-```yaml
-version: v1
-managed:
-  enabled: true
-plugins:
-  - plugin: buf.build/protocolbuffers/go
-    out: .
-    opt: paths=source_relative
-  - plugin: buf.build/grpc/go
-    out: .
-    opt: paths=source_relative
-  - plugin: buf.build/grpc-ecosystem/gateway
-    out: .
-    opt:
-      - paths=source_relative
-      - generate_unbound_methods=true
-  - plugin: buf.build/grpc-ecosystem/openapiv2
-    out: openapi
-```
-
-## Регенерация кода
-
-После изменения `.proto` файлов регенерируйте код:
-
-```bash
-# Using buf (recommended)
+# 7. Сгенерируйте Go-код из вашего .proto файла
 buf generate
 
-# Or using protoc directly
-protoc --go_out=. --go-grpc_out=. --grpc-gateway_out=. \
-  --openapiv2_out=openapi \
-  proto/myservice/v1/*.proto
-```
-
-## Устранение неполадок
-
-### Команда не найдена: tonica
-
-Убедитесь, что `$GOPATH/bin` находится в вашем PATH:
-```bash
-export PATH=$PATH:$(go env GOPATH)/bin
-```
-
-### Плагины Protoc не найдены
-
-Установите все необходимые плагины:
-```bash
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
-go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest
-```
-
-### Ошибки импорта в сгенерированном коде
-
-Запустите `go mod tidy` для загрузки зависимостей:
-```bash
+# 8. Установите сгенерированные зависимости
 go mod tidy
+
+# 9. Напишите реализацию вашего сервиса в директории 'services'
+
+# 10. Зарегистрируйте сервис в main.go
+
+# 11. Запустите приложение в режиме "all-in-one"
+go run .
 ```
-
-### Ошибки Buf
-
-Убедитесь, что `buf.yaml` и `buf.gen.yaml` правильно настроены. Проверьте [документацию Buf](https://buf.build/docs) для подробностей.
-
-## Следующие шаги
-
-- [Начало работы](./getting-started.md) - Создайте свой первый сервис
-- [Архитектура](./architecture.md) - Поймите фреймворк
-- [Конфигурация](./configuration.md) - Настройте ваши сервисы
-- [Лучшие практики](./best-practices.md) - Паттерны для продакшена

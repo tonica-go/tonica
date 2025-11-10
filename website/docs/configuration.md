@@ -1,956 +1,210 @@
-# Tonica Configuration Guide
+# Configuration
 
-This guide covers all configuration options available in Tonica, including environment variables, code-based configuration, and best practices.
+In Tonica, configuring your application is done in code using functional options. This approach gives you full control over how your application is assembled and started. The core idea is to read values from environment variables (or other sources like files) and pass them as options when creating the application instance and its services.
 
-## Configuration Priority
+## Configuration Philosophy
 
-Tonica follows this priority order (highest to lowest):
+Tonica follows the "explicit is better than implicit" principle. The framework does not automatically read environment variables. Instead, it provides convenient helpers like `config.GetEnv`, and you decide which environment variables to use and which options to pass them to.
 
-1. **Code** - Options passed to constructors
-2. **Environment Variables** - Environment-based configuration
-3. **Defaults** - Built-in sensible defaults
+**Priority Order:**
 
-Example:
+1.  **Code:** Hard-coded values or those passed into option functions have the highest priority.
+2.  **Environment Variables:** Your logic in `main.go` reads environment variables and passes them into the code.
+3.  **Defaults:** The `config.GetEnv` helper and some options have fallback values.
+
+## Quick Start: Configuration Example
+
+Here is what a typical configuration structure looks like in `main.go`:
+
 ```go
-// Priority 1: Code (highest)
-app := tonica.NewApp(tonica.WithName("my-service"))
+package main
 
-// Priority 2: Environment variable
-// export APP_NAME="env-service"
+import (
+    "github.com/tonica-go/tonica/pkg/tonica"
+    "github.com/tonica-go/tonica/pkg/tonica/config"
+    "github.com/tonica-go/tonica/pkg/tonica/service"
+    // ... imports for your services
+)
 
-// Priority 3: Default (lowest)
-// Falls back to "tonica-app"
+func main() {
+    // 1. Create the application configuration
+    appConfig := config.NewConfig(
+        // Set the run mode from the APP_MODE environment variable
+        config.WithRunMode(config.GetEnv("APP_MODE", config.ModeAIO)),
+    )
+
+    // 2. Create the application instance
+    app := tonica.NewApp(
+        // Pass the created configuration
+        tonica.WithConfig(appConfig),
+        // Set the application name
+        tonica.WithName(config.GetEnv("APP_NAME", "MyApp")),
+    )
+
+    // 3. Configure and register services
+    
+    // Read DSN and driver from environment variables
+    dbDSN := config.GetEnv("DB_DSN", "user:pass@tcp(localhost:3306)/db?parseTime=true")
+    dbDriver := config.GetEnv("DB_DRIVER", service.Mysql)
+
+    // Read Redis address
+    redisAddr := config.GetEnv("REDIS_ADDR", "localhost:6379")
+
+    // Create a service with DB and Redis connections
+    paymentSvc := service.NewService(
+        service.WithName("payment-service"),
+        service.WithDB(dbDSN, dbDriver),
+        service.WithRedis(redisAddr, "", 0),
+        service.WithGRPC(payment.RegisterGRPC), // your gRPC registrar
+        service.WithGateway(payment.RegisterGateway), // your Gateway registrar
+    )
+    
+    // Register the service with the application
+    app.GetRegistry().MustRegisterService(paymentSvc)
+
+    // 4. Run the application
+    if err := app.Run(); err != nil {
+        app.GetLogger().Fatal(err)
+    }
+}
 ```
 
-## Application Configuration
+## Application Configuration (`tonica.App`)
 
-### App Options
+The main application instance is created using `tonica.NewApp(options ...AppOption)`.
 
-Configure the main application:
+### Core `AppOption` Options
+
+| Option | Description | Example |
+| --- | --- | --- |
+| `WithName(string)` | Sets the application name. Used for logging and metrics. | `tonica.WithName("user-service")` |
+| `WithConfig(*config.Config)` | Applies the startup configuration (run mode, list of services). **A very important option.** | `tonica.WithConfig(appConfig)` |
+| `WithSpec(string)` | Specifies the path to the OpenAPI specification file. | `tonica.WithSpec("openapi/spec.json")` |
+| `WithSpecUrl(string)` | Sets the URL where the specification will be available. | `tonica.WithSpecUrl("/swagger.json")` |
+| `WithAPIPrefix(string)` | Adds a global prefix to all HTTP routes. | `tonica.WithAPIPrefix("/api/v1")` |
+| `WithLogger(*log.Logger)` | Allows you to use a custom logger. | `tonica.WithLogger(myLogger)` |
+
+### Startup Configuration (`config.Config`)
+
+This configuration defines *how* your application will run. It is created using `config.NewConfig(options ...Option)`.
+
+| Option | Description | Environment Variable | Example |
+| --- | --- | --- | --- |
+| `WithRunMode(string)` | Sets the application's run mode. | `APP_MODE` | `config.WithRunMode(config.ModeService)` |
+| `WithServices([]string)` | In `service` mode, specifies which services to run. | `APP_SERVICES` | `config.WithServices([]string{"auth", "users"})` |
+| `WithWorkers([]string)` | In `worker` mode, specifies which workers to run. | `APP_WORKERS` | `config.WithWorkers([]string{"emails", "reports"})` |
+| `WithConsumers([]string)` | In `consumer` mode, specifies which consumers to run. | `APP_CONSUMERS` | `config.WithConsumers([]string{"orders"})` |
+| `WithDebugMode(bool)` | Enables/disables debug mode. | `APP_DEBUG` | `config.WithDebugMode(true)` |
+
+## Run Modes
+
+The run mode is a key concept in Tonica that allows you to use the same codebase for different deployment types. The mode is set via the `config.WithRunMode` option and is usually controlled by the `APP_MODE` environment variable.
+
+| Mode | `APP_MODE` | Description |
+| --- | --- | --- |
+| **All-In-One** | `aio` | **(Default)**. Runs all registered components (services, workers, consumers) in a single process. Ideal for development and simple deployments. |
+| **Service** | `service` | Runs only the specified gRPC services and their HTTP gateways. Use `APP_SERVICES` (comma-separated) to specify which ones. |
+| **Worker** | `worker` | Runs only the specified Temporal workers. Use `APP_WORKERS` to select them. |
+| **Consumer** | `consumer` | Runs only the specified message consumers (e.g., Kafka). Use `APP_CONSUMERS` to select them. |
+| **Gateway** | `gateway` | Runs only the HTTP gateways for all registered gRPC services, but not the gRPC servers themselves. Useful for deploying the API Gateway as a separate component. |
+
+## Service Configuration (`service.Service`)
+
+Each service in your application is created using `service.NewService(options ...Option)`.
+
+### Core `service.Option` Options
+
+| Option | Description | Example |
+| --- | --- | --- |
+| `WithName(string)` | **Required.** A unique name for the service. | `service.WithName("payment-service")` |
+| `WithGRPC(GRPCRegistrar)` | **Required.** Registers your gRPC server implementation. | `service.WithGRPC(RegisterPaymentService)` |
+| `WithGateway(GatewayRegistrar)` | Registers the HTTP gateway (gRPC-Gateway) for your service. | `service.WithGateway(RegisterPaymentGateway)` |
+| `WithGRPCAddr(string)` | Sets the address for the gRPC server (`host:port`). | `service.WithGRPCAddr(":9001")` |
+
+### Connecting to Databases & Caches
+
+Connections are configured for each service individually.
+
+#### Database
+
+The `WithDB` option is used to connect to a database. Tonica supports PostgreSQL, MySQL, and SQLite out-of-the-box using the `bun` ORM and automatically integrates OpenTelemetry for query tracing.
 
 ```go
-app := tonica.NewApp(
-    tonica.WithName("my-service"),              // Application name
-    tonica.WithSpec("openapi/spec.json"),       // OpenAPI spec path
-    tonica.WithSpecUrl("/swagger.json"),        // Custom spec URL
-    tonica.WithConfig(customConfig),            // Custom config object
-    tonica.WithLogger(customLogger),            // Custom logger
-    tonica.WithRegistry(customRegistry),        // Custom registry
+// Read DSN and driver from environment variables
+dbDSN := config.GetEnv("DB_DSN", "user:pass@tcp(localhost:3306)/db?parseTime=true")
+dbDriver := config.GetEnv("DB_DRIVER", service.Postgres) // service.Postgres, service.Mysql, service.Sqlite
+
+svc := service.NewService(
+    // ...other options
+    service.WithDB(dbDSN, dbDriver),
 )
 ```
 
-#### WithName
+| Driver | Constant | Example DSN |
+| --- | --- | --- |
+| PostgreSQL | `service.Postgres` | `postgres://user:pass@host:5432/db?sslmode=disable` |
+| MySQL | `service.Mysql` | `user:pass@tcp(host:3306)/db?parseTime=true` |
+| SQLite | `service.Sqlite` | `file:data.db?cache=shared` |
 
-Sets the application name (used in metrics, logging, etc.).
+#### Redis
 
-```go
-tonica.WithName("user-service")
-```
-
-**Environment Variable:**
-```bash
-export APP_NAME="user-service"
-```
-
-**Default:** `"tonica-app"`
-
-#### WithSpec
-
-Sets the path to the OpenAPI specification file.
+The `WithRedis` option is used to connect to Redis.
 
 ```go
-tonica.WithSpec("openapi/myservice/v1/myservice.swagger.json")
-```
+redisAddr := config.GetEnv("REDIS_ADDR", "localhost:6379")
+redisPassword := config.GetEnv("REDIS_PASSWORD", "")
+redisDB := config.GetEnvInt("REDIS_DB", 0) // Use GetEnvInt for numeric values
 
-**Environment Variable:**
-```bash
-export OPENAPI_SPEC="openapi/myservice/v1/myservice.swagger.json"
-```
-
-**Default:** `""` (no spec loaded)
-
-#### WithSpecUrl
-
-Sets the URL path where the OpenAPI spec will be served.
-
-```go
-tonica.WithSpecUrl("/api-spec.json")
-```
-
-**Default:** `"/openapi.json"`
-
-### Server Ports
-
-Configure HTTP, gRPC, and metrics ports:
-
-**Environment Variables:**
-```bash
-# HTTP/REST server port
-export APP_PORT="8080"          # Default: 8080
-
-# gRPC server port
-export GRPC_PORT="50051"        # Default: 50051
-
-# Metrics endpoint port
-export METRICS_PORT="9090"      # Default: 9090
-```
-
-**Example:**
-```bash
-# Run on custom ports
-export APP_PORT="3000"
-export GRPC_PORT="9000"
-export METRICS_PORT="9100"
-```
-
-### CORS Configuration
-
-Configure Cross-Origin Resource Sharing:
-
-**Environment Variables:**
-```bash
-# Allow all origins (default)
-# No configuration needed
-
-# Restrict to specific origins
-export APP_CORS_ORIGINS="https://myapp.com,https://admin.myapp.com"
-```
-
-**Default:** Allows all origins
-
-**Allowed Methods:** GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
-
-**Allowed Headers:** Origin, Content-Length, Content-Type, Authorization
-
-## Service Configuration
-
-Configure gRPC services:
-
-```go
-svc := tonica.NewService(
-    tonica.WithServiceName("UserService"),      // Service name
-    tonica.WithDB(db),                          // Database client
-    tonica.WithRedis(redis),                    // Redis client
+svc := service.NewService(
+    // ...other options
+    service.WithRedis(redisAddr, redisPassword, redisDB),
 )
 ```
 
-### WithServiceName
-
-Sets the service name for registration.
-
-```go
-tonica.WithServiceName("UserService")
-```
-
-**Required:** Yes (for registration)
-
-### WithDB
-
-Attaches a database client to the service.
-
-```go
-db := tonica.NewDB(...)
-svc := tonica.NewService(tonica.WithDB(db))
-```
-
-### WithRedis
-
-Attaches a Redis client to the service.
-
-```go
-redis := tonica.NewRedis(...)
-svc := tonica.NewService(tonica.WithRedis(redis))
-```
-
-## Database Configuration
-
-Tonica supports PostgreSQL, MySQL, and SQLite via Bun ORM.
-
-### PostgreSQL
-
-```go
-db := tonica.NewDB(
-    tonica.WithDriver(tonica.Postgres),
-    tonica.WithDSN("postgres://user:password@localhost:5432/dbname?sslmode=disable"),
-)
-```
-
-**Environment Variables:**
-```bash
-export DB_DRIVER="postgres"
-export DB_DSN="postgres://user:password@localhost:5432/dbname?sslmode=disable"
-```
-
-**DSN Format:**
-```
-postgres://username:password@host:port/database?sslmode=disable
-```
-
-**Options:**
-- `sslmode`: `disable`, `require`, `verify-ca`, `verify-full`
-- `connect_timeout`: Connection timeout in seconds
-- `application_name`: Application name for logging
-
-**Example:**
-```bash
-export DB_DSN="postgres://myuser:mypass@db.example.com:5432/mydb?sslmode=require&connect_timeout=10"
-```
-
-### MySQL
-
-```go
-db := tonica.NewDB(
-    tonica.WithDriver(tonica.Mysql),
-    tonica.WithDSN("user:password@tcp(localhost:3306)/dbname?parseTime=true"),
-)
-```
-
-**Environment Variables:**
-```bash
-export DB_DRIVER="mysql"
-export DB_DSN="user:password@tcp(localhost:3306)/dbname?parseTime=true"
-```
-
-**DSN Format:**
-```
-username:password@tcp(host:port)/database?parseTime=true
-```
-
-**Important Options:**
-- `parseTime=true`: **Required** for proper time handling
-- `charset=utf8mb4`: Character set (recommended)
-- `loc=Local`: Timezone location
-
-**Example:**
-```bash
-export DB_DSN="myuser:mypass@tcp(mysql.example.com:3306)/mydb?parseTime=true&charset=utf8mb4"
-```
-
-### SQLite
-
-```go
-db := tonica.NewDB(
-    tonica.WithDriver(tonica.Sqlite),
-    tonica.WithDSN("file:./data/mydb.db?cache=shared&mode=rwc"),
-)
-```
-
-**Environment Variables:**
-```bash
-export DB_DRIVER="sqlite"
-export DB_DSN="file:./data/mydb.db?cache=shared&mode=rwc"
-```
-
-**DSN Format:**
-```
-file:path/to/database.db?cache=shared&mode=rwc
-```
-
-**Options:**
-- `cache`: `shared` (multi-connection) or `private`
-- `mode`: `ro` (read-only), `rw` (read-write), `rwc` (read-write-create)
-
-**Example:**
-```bash
-export DB_DSN="file:/var/lib/myapp/data.db?cache=shared&mode=rwc"
-```
-
-### Database Options
-
-#### WithDriver
-
-Sets the database driver.
-
-```go
-tonica.WithDriver(tonica.Postgres)  // PostgreSQL
-tonica.WithDriver(tonica.Mysql)     // MySQL
-tonica.WithDriver(tonica.Sqlite)    // SQLite
-```
-
-**Environment Variable:**
-```bash
-export DB_DRIVER="postgres"  # or "mysql", "sqlite"
-```
-
-**Default:** `"postgres"`
-
-#### WithDSN
-
-Sets the database connection string.
-
-```go
-tonica.WithDSN("postgres://localhost/mydb")
-```
-
-**Environment Variable:**
-```bash
-export DB_DSN="postgres://localhost/mydb"
-```
-
-**Required:** Yes (if using database)
-
-### Connection Pooling
-
-Configure connection pooling (via Bun):
-
-```go
-db := tonica.NewDB(...)
-client := db.GetClient()
-
-// Configure pool
-client.SetMaxOpenConns(25)                        // Max open connections
-client.SetMaxIdleConns(10)                        // Max idle connections
-client.SetConnMaxLifetime(5 * time.Minute)        // Connection lifetime
-client.SetConnMaxIdleTime(10 * time.Minute)       // Max idle time
-```
-
-**Recommended Settings:**
-
-**For API services (high concurrency):**
-```go
-client.SetMaxOpenConns(100)
-client.SetMaxIdleConns(25)
-client.SetConnMaxLifetime(5 * time.Minute)
-```
-
-**For workers (low concurrency):**
-```go
-client.SetMaxOpenConns(10)
-client.SetMaxIdleConns(5)
-client.SetConnMaxLifetime(10 * time.Minute)
-```
-
-## Redis Configuration
-
-Configure Redis connection:
-
-```go
-redis := tonica.NewRedis(
-    tonica.WithRedisAddr("localhost:6379"),     // Redis address
-    tonica.WithRedisPassword("secret"),         // Password (optional)
-    tonica.WithRedisDB(0),                      // Database number
-)
-```
-
-### Redis Options
-
-#### WithRedisAddr
-
-Sets the Redis server address.
-
-```go
-tonica.WithRedisAddr("redis.example.com:6379")
-```
-
-**Environment Variable:**
-```bash
-export REDIS_ADDR="redis.example.com:6379"
-```
-
-**Default:** `"localhost:6379"`
-
-#### WithRedisPassword
-
-Sets the Redis password (if required).
-
-```go
-tonica.WithRedisPassword("my-secret-password")
-```
-
-**Environment Variable:**
-```bash
-export REDIS_PASSWORD="my-secret-password"
-```
-
-**Default:** `""` (no password)
-
-#### WithRedisDB
-
-Sets the Redis database number (0-15).
-
-```go
-tonica.WithRedisDB(2)
-```
-
-**Environment Variable:**
-```bash
-export REDIS_DB="2"
-```
-
-**Default:** `0`
-
-### Redis Connection Pooling
-
-Configure connection pool (via go-redis):
-
-```go
-client := redis.GetClient()
-
-// Configure pool options
-client.Options().PoolSize = 10           // Pool size
-client.Options().MinIdleConns = 5        // Min idle connections
-client.Options().MaxConnAge = 0          // Max connection age (0 = no limit)
-client.Options().PoolTimeout = 4 * time.Second
-client.Options().IdleTimeout = 5 * time.Minute
-```
-
-## Temporal Configuration
-
-Configure Temporal workers:
-
-```go
-worker := tonica.NewWorker(
-    tonica.WithWorkerName("email-worker"),                    // Worker name
-    tonica.WithTaskQueue("email-tasks"),                      // Task queue
-    tonica.WithTemporalHost("temporal.example.com:7233"),     // Temporal host
-    tonica.WithTemporalNamespace("production"),               // Namespace
-    tonica.WithMaxConcurrentActivities(10),                   // Concurrency
-)
-```
-
-### Temporal Options
-
-#### WithWorkerName
-
-Sets the worker name.
-
-```go
-tonica.WithWorkerName("report-generator")
-```
-
-**Required:** Yes
-
-#### WithTaskQueue
-
-Sets the Temporal task queue name.
-
-```go
-tonica.WithTaskQueue("report-tasks")
-```
-
-**Required:** Yes
-
-#### WithTemporalHost
-
-Sets the Temporal server address.
-
-```go
-tonica.WithTemporalHost("temporal.example.com:7233")
-```
-
-**Environment Variable:**
-```bash
-export TEMPORAL_HOST="temporal.example.com:7233"
-```
-
-**Default:** `"localhost:7233"`
-
-#### WithTemporalNamespace
-
-Sets the Temporal namespace.
-
-```go
-tonica.WithTemporalNamespace("production")
-```
-
-**Environment Variable:**
-```bash
-export TEMPORAL_NAMESPACE="production"
-```
-
-**Default:** `"default"`
-
-#### WithMaxConcurrentActivities
-
-Sets max concurrent activity executions.
-
-```go
-tonica.WithMaxConcurrentActivities(20)
-```
-
-**Default:** `10`
-
-**Recommendations:**
-- I/O-bound activities (emails, API calls): 20-100
-- CPU-bound activities (image processing, reports): 2-5
-- Memory-intensive activities: 1-3
-
-## Consumer Configuration
-
-Configure message consumers:
-
-```go
-consumer := tonica.NewConsumer(
-    tonica.WithConsumerName("order-processor"),       // Consumer name
-    tonica.WithTopic("orders"),                       // Topic name
-    tonica.WithConsumerGroup("order-handlers"),       // Consumer group
-    tonica.WithPubSubClient(client),                  // PubSub client
-    tonica.WithHandler(handleOrder),                  // Message handler
-)
-```
-
-### Consumer Options
-
-#### WithConsumerName
-
-Sets the consumer name.
-
-```go
-tonica.WithConsumerName("payment-processor")
-```
-
-**Required:** Yes
-
-#### WithTopic
-
-Sets the topic to consume from.
-
-```go
-tonica.WithTopic("payments")
-```
-
-**Required:** Yes
-
-#### WithConsumerGroup
-
-Sets the consumer group name.
-
-```go
-tonica.WithConsumerGroup("payment-handlers")
-```
-
-**Default:** `""` (no consumer group)
-
-#### WithPubSubClient
-
-Sets the PubSub/Kafka client.
-
-```go
-tonica.WithPubSubClient(pubsubClient)
-```
-
-**Required:** Yes
-
-#### WithHandler
-
-Sets the message handler function.
-
-```go
-tonica.WithHandler(func(ctx context.Context, msg *pubsub.Message) error {
-    // Process message
-    return nil
-})
-```
-
-**Required:** Yes
-
-## Observability Configuration
-
-### OpenTelemetry
-
-Configure distributed tracing:
-
-**Environment Variables:**
-```bash
-# Enable/disable tracing
-export OTEL_ENABLED="true"          # Default: false
-
-# OTLP endpoint
-export OTEL_ENDPOINT="localhost:4317"
-
-# Service name (overrides APP_NAME)
-export OTEL_SERVICE_NAME="user-service"
-
-# Sampling rate (0.0 to 1.0)
-export OTEL_TRACE_SAMPLING="1.0"    # 100% sampling
-```
-
-**Example (Jaeger):**
-```bash
-export OTEL_ENABLED="true"
-export OTEL_ENDPOINT="jaeger:4317"
-export OTEL_SERVICE_NAME="user-service"
-```
-
-**Example (Honeycomb):**
-```bash
-export OTEL_ENABLED="true"
-export OTEL_ENDPOINT="api.honeycomb.io:443"
-export OTEL_SERVICE_NAME="user-service"
-export OTEL_HEADERS="x-honeycomb-team=YOUR_API_KEY"
-```
+## Environment Variables
+
+Here is a summary of the most commonly used environment variables.
+
+| Variable | Description | Default Value |
+| --- | --- | --- |
+| `APP_NAME` | The name of your application. | `"Tonica"` |
+| `APP_MODE` | The application's run mode. | `"aio"` |
+| `APP_SERVICES` | List of services to run in `service` mode. | `""` |
+| `APP_WORKERS` | List of workers to run in `worker` mode. | `""` |
+| `APP_CONSUMERS` | List of consumers to run in `consumer` mode. | `""` |
+| `APP_PORT` | Port for the main HTTP server (gateways, custom routes). | `"8080"` |
+| `GRPC_PORT` | Port for the gRPC server (if `WithGRPCAddr` is not set). | `"50051"` |
+| `METRICS_PORT` | Port for the Prometheus metrics endpoint. | `"9090"` |
+| `DB_DSN` | Data Source Name for the database connection. | `""` |
+| `DB_DRIVER` | Database driver (`postgres`, `mysql`, `sqlite`). | `"postgres"` |
+| `REDIS_ADDR` | Address of the Redis server (`host:port`). | `"localhost:6379"` |
+| `REDIS_PASSWORD` | Password for Redis. | `""` |
+| `REDIS_DB` | Redis database number. | `0` |
+| `LOG_LEVEL` | Logging level (`debug`, `info`, `warn`, `error`). | `"info"` |
+| `LOG_FORMAT` | Log format (`text` or `json`). | `"text"` |
+
+## Observability
+
+Tonica has built-in support for logging, metrics, and tracing.
 
 ### Logging
 
-Configure structured logging:
-
-**Log Levels:**
-```bash
-# Set log level
-export LOG_LEVEL="debug"     # debug, info, warn, error
-```
-
-**Log Format:**
-```bash
-# JSON format (for production)
-export LOG_FORMAT="json"
-
-# Text format (for development)
-export LOG_FORMAT="text"
-```
-
-**Example:**
-```bash
-# Development
-export LOG_LEVEL="debug"
-export LOG_FORMAT="text"
-
-# Production
-export LOG_LEVEL="info"
-export LOG_FORMAT="json"
-```
+Logging is configured via environment variables:
+- `LOG_LEVEL`: Set to `debug` for development and `info` for production.
+- `LOG_FORMAT`: Set to `text` for local development and `json` for production to make logs easy to parse.
 
 ### Metrics
 
-Metrics are always enabled on port 9090 by default.
-
-**Customize port:**
-```bash
-export METRICS_PORT="9100"
-```
-
-**Disable metrics:**
-```go
-// Not recommended - metrics are lightweight
-// To disable, don't expose port 9090 externally
-```
-
-## Complete Configuration Examples
-
-### Development Environment
-
-```bash
-# Application
-export APP_NAME="myservice-dev"
-export APP_PORT="8080"
-export GRPC_PORT="50051"
-export METRICS_PORT="9090"
-
-# Database
-export DB_DRIVER="sqlite"
-export DB_DSN="file:./dev.db?cache=shared&mode=rwc"
-
-# Redis
-export REDIS_ADDR="localhost:6379"
-export REDIS_PASSWORD=""
-export REDIS_DB="0"
-
-# Temporal
-export TEMPORAL_HOST="localhost:7233"
-export TEMPORAL_NAMESPACE="default"
-
-# Logging
-export LOG_LEVEL="debug"
-export LOG_FORMAT="text"
-
-# Tracing (disabled)
-export OTEL_ENABLED="false"
-```
-
-### Production Environment
-
-```bash
-# Application
-export APP_NAME="myservice"
-export APP_PORT="8080"
-export GRPC_PORT="50051"
-export METRICS_PORT="9090"
-
-# Database
-export DB_DRIVER="postgres"
-export DB_DSN="postgres://user:pass@postgres.prod:5432/mydb?sslmode=require"
-
-# Redis
-export REDIS_ADDR="redis.prod:6379"
-export REDIS_PASSWORD="${REDIS_SECRET}"
-export REDIS_DB="0"
-
-# Temporal
-export TEMPORAL_HOST="temporal.prod:7233"
-export TEMPORAL_NAMESPACE="production"
-
-# CORS
-export APP_CORS_ORIGINS="https://myapp.com,https://admin.myapp.com"
-
-# Logging
-export LOG_LEVEL="info"
-export LOG_FORMAT="json"
-
-# Tracing
-export OTEL_ENABLED="true"
-export OTEL_ENDPOINT="tempo.prod:4317"
-export OTEL_SERVICE_NAME="myservice"
-export OTEL_TRACE_SAMPLING="0.1"  # 10% sampling
-```
-
-### Docker Compose
-
-```yaml
-version: '3.8'
-
-services:
-  app:
-    image: myservice:latest
-    environment:
-      # Application
-      APP_NAME: myservice
-      APP_PORT: 8080
-      GRPC_PORT: 50051
-      METRICS_PORT: 9090
-
-      # Database
-      DB_DRIVER: postgres
-      DB_DSN: postgres://myuser:mypass@postgres:5432/mydb?sslmode=disable
-
-      # Redis
-      REDIS_ADDR: redis:6379
-      REDIS_PASSWORD: ""
-      REDIS_DB: 0
-
-      # Temporal
-      TEMPORAL_HOST: temporal:7233
-      TEMPORAL_NAMESPACE: default
-
-      # Observability
-      LOG_LEVEL: info
-      LOG_FORMAT: json
-      OTEL_ENABLED: "true"
-      OTEL_ENDPOINT: jaeger:4317
-
-    ports:
-      - "8080:8080"    # HTTP
-      - "50051:50051"  # gRPC
-      - "9090:9090"    # Metrics
-
-    depends_on:
-      - postgres
-      - redis
-      - temporal
-
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: mypass
-      POSTGRES_DB: mydb
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-
-  temporal:
-    image: temporalio/auto-setup:latest
-
-volumes:
-  postgres_data:
-```
-
-### Kubernetes ConfigMap
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: myservice-config
-data:
-  APP_NAME: "myservice"
-  APP_PORT: "8080"
-  GRPC_PORT: "50051"
-  METRICS_PORT: "9090"
-
-  DB_DRIVER: "postgres"
-
-  REDIS_DB: "0"
-
-  TEMPORAL_NAMESPACE: "production"
-
-  LOG_LEVEL: "info"
-  LOG_FORMAT: "json"
-
-  OTEL_ENABLED: "true"
-  OTEL_TRACE_SAMPLING: "0.1"
-
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: myservice-secrets
-type: Opaque
-stringData:
-  DB_DSN: "postgres://user:pass@postgres:5432/db"
-  REDIS_ADDR: "redis:6379"
-  REDIS_PASSWORD: "secret"
-  TEMPORAL_HOST: "temporal:7233"
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: myservice
-spec:
-  replicas: 3
-  template:
-    spec:
-      containers:
-      - name: app
-        image: myservice:latest
-        envFrom:
-        - configMapRef:
-            name: myservice-config
-        - secretRef:
-            name: myservice-secrets
-```
-
-## Configuration Best Practices
-
-### 1. Never Hardcode Secrets
-
-❌ **Bad:**
-```go
-db := tonica.NewDB(
-    tonica.WithDSN("postgres://admin:password123@localhost/db"),
-)
-```
-
-✅ **Good:**
-```go
-dsn := os.Getenv("DB_DSN")
-if dsn == "" {
-    log.Fatal("DB_DSN is required")
-}
-db := tonica.NewDB(tonica.WithDSN(dsn))
-```
-
-### 2. Validate Configuration
-
-```go
-func validateConfig() error {
-    if os.Getenv("DB_DSN") == "" {
-        return errors.New("DB_DSN is required")
-    }
-    if os.Getenv("REDIS_ADDR") == "" {
-        return errors.New("REDIS_ADDR is required")
-    }
-    return nil
-}
-
-func main() {
-    if err := validateConfig(); err != nil {
-        log.Fatal(err)
-    }
-    // ...
-}
-```
-
-### 3. Use Environment-Specific Files
-
-```bash
-# .env.development
-APP_NAME=myservice-dev
-DB_DRIVER=sqlite
-DB_DSN=file:./dev.db
-
-# .env.production
-APP_NAME=myservice
-DB_DRIVER=postgres
-DB_DSN=postgres://...
-```
-
-### 4. Document Required Variables
-
-Create a `.env.example`:
-
-```bash
-# Application
-APP_NAME=myservice
-APP_PORT=8080
-GRPC_PORT=50051
-
-# Database (required)
-DB_DRIVER=postgres
-DB_DSN=postgres://user:pass@host:5432/db
-
-# Redis (optional)
-REDIS_ADDR=localhost:6379
-REDIS_PASSWORD=
-REDIS_DB=0
-
-# Temporal (required for workers)
-TEMPORAL_HOST=localhost:7233
-TEMPORAL_NAMESPACE=default
-```
-
-### 5. Use Defaults Wisely
-
-```go
-func getEnvOrDefault(key, defaultValue string) string {
-    if value := os.Getenv(key); value != "" {
-        return value
-    }
-    return defaultValue
-}
-
-appPort := getEnvOrDefault("APP_PORT", "8080")
-grpcPort := getEnvOrDefault("GRPC_PORT", "50051")
-```
-
-## Troubleshooting
-
-### Database Connection Issues
-
-**Error:** `connection refused`
-```bash
-# Check if database is running
-docker ps | grep postgres
-
-# Test connection
-psql postgres://user:pass@localhost:5432/db
-```
-
-**Error:** `authentication failed`
-```bash
-# Verify credentials
-echo $DB_DSN
-
-# Check PostgreSQL logs
-docker logs postgres-container
-```
-
-### Redis Connection Issues
-
-**Error:** `dial tcp: connection refused`
-```bash
-# Check if Redis is running
-docker ps | grep redis
-
-# Test connection
-redis-cli -h localhost -p 6379 ping
-```
-
-### Port Conflicts
-
-**Error:** `bind: address already in use`
-```bash
-# Find what's using the port
-lsof -i :8080
-
-# Use different port
-export APP_PORT="8081"
-```
-
-## Next Steps
-
-- [Custom Routes](./custom-routes.md) - Add custom HTTP routes
-- [Testing](./testing.md) - Test your configuration
-- [Best Practices](./best-practices.md) - Production configuration patterns
+Prometheus-formatted metrics are available by default on the port specified by the `METRICS_PORT` variable (default `:9090`).
+
+### Tracing (OpenTelemetry)
+
+Tracing is enabled and configured via standard OpenTelemetry environment variables:
+
+| Variable | Description | Example |
+| --- | --- | --- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | The address of the OpenTelemetry collector (e.g., Jaeger, Tempo). | `localhost:4317` |
+| `OTEL_SERVICE_NAME` | The service name for tracing (usually matches `APP_NAME`). | `payment-service` |
+| `OTEL_TRACES_EXPORTER` | Specify `otlp` to export traces. | `otlp` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | The exporter protocol (`grpc` or `http/protobuf`). | `grpc` |
+| `OTEL_SDK_DISABLED` | Set to `true` to completely disable tracing. | `false` |
