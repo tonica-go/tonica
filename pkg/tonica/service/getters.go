@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/redis/go-redis/v9"
 	"github.com/tonica-go/tonica/pkg/tonica/grpc/serviceconfig"
 	"github.com/uptrace/bun"
 	"google.golang.org/grpc"
@@ -50,4 +51,19 @@ func (s *Service) GetDBClient() *bun.DB {
 		return nil
 	}
 	return db.GetClient()
+}
+
+func (s *Service) GetRedis() *Redis {
+	if s.storage == nil || s.storage.rdb == nil {
+		return nil
+	}
+	return s.storage.rdb
+}
+
+func (s *Service) GetRedisClient() *redis.Client {
+	rdb := s.GetRedis()
+	if rdb == nil {
+		return nil
+	}
+	return rdb.GetClient()
 }
