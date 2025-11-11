@@ -31,7 +31,7 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   };
 };
 
-service {{ .NameFirstUpper }}Service {
+service {{ .NameFirstUpper }} {
   // Public example endpoint
   rpc Hello(HelloRequest) returns (HelloResponse) {
     option (google.api.http) = {
@@ -56,26 +56,27 @@ const serviceTpl = `package {{ .Name }};
 import (
 	"context"
 
+	"{{ .ModulePath }}/proto/{{ .Name }}/v1"
 	"github.com/tonica-go/tonica/pkg/tonica/service"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 )
 
 type {{ .NameFirstUpper }}ServiceServer struct {
-	{{ .Name }}v1.Unimplemented{{ .NameFirstUpper }}ServiceServer
+	{{ .Name }}v1.Unimplemented{{ .NameFirstUpper }}Server
 	srv *service.Service
 }
 
 func RegisterGRPC(s *grpc.Server, srv *service.Service) {
-	{{ .Name }}v1.Register{{ .NameFirstUpper }}ServiceServer(s, &{{ .NameFirstUpper }}ServiceServer{srv: srv})
+	{{ .Name }}v1.Register{{ .NameFirstUpper }}Server(s, &{{ .NameFirstUpper }}Server{srv: srv})
 }
 
 func RegisterGateway(ctx context.Context, mux *runtime.ServeMux, target string, dialOpts []grpc.DialOption) error {
-	return {{ .Name }}v1.Register{{ .NameFirstUpper }}ServiceHandlerFromEndpoint(ctx, mux, target, dialOpts)
+	return {{ .Name }}v1.Register{{ .NameFirstUpper }}HandlerFromEndpoint(ctx, mux, target, dialOpts)
 }
 
-func GetClient(s *grpc.ClientConn) {{ .Name }}v1.{{ .NameFirstUpper }}ServiceClient {
-	return {{ .Name }}v1.New{{ .NameFirstUpper }}ServiceClient(s)
+func GetClient(s *grpc.ClientConn) {{ .Name }}v1.{{ .NameFirstUpper }}Client {
+	return {{ .Name }}v1.New{{ .NameFirstUpper }}Client(s)
 }
 
 // implement all necessary methods, better in separated file, cause this one probably could be regenerated

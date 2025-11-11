@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -72,12 +73,14 @@ func executeTemplate(tmpl string, name string) string {
 
 	var buf bytes.Buffer
 	type Data struct {
+		ModulePath     string
 		ProjectName    string
 		Name           string
 		NameFirstUpper string
 	}
 
 	data := Data{
+		ModulePath:     getModulePath(),
 		ProjectName:    name,
 		Name:           strings.ToLower(name),
 		NameFirstUpper: strings.Title(name),
@@ -88,4 +91,24 @@ func executeTemplate(tmpl string, name string) string {
 	}
 
 	return buf.String()
+}
+
+func getModulePath() string {
+	wd, _ := os.Getwd()
+	root := wd
+
+	for {
+		if _, err := os.Stat(filepath.Join(root, "go.mod")); err == nil {
+			break
+		}
+		parent := filepath.Dir(root)
+		if parent == root {
+			return ""
+		}
+		root = parent
+	}
+
+	rel, _ := filepath.Rel(root, wd)
+	project := filepath.Base(root)
+	return filepath.ToSlash(filepath.Join(project, rel))
 }
