@@ -124,7 +124,7 @@ func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
 			// Forward selected headers to gRPC metadata
 			switch strings.ToLower(key) {
-			case "authorization", "traceparent", "tracestate", "x-request-id":
+			case "authorization", "traceparent", "tracestate", "x-request-id", "signature":
 				return key, true
 			default:
 				return runtime.DefaultHeaderMatcher(key)
