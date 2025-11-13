@@ -58,6 +58,8 @@ type App struct {
 
 	// routeMiddlewares defines middleware for specific route patterns
 	routeMiddlewares []RouteMiddleware
+
+	customGrpcHeaders map[string]string
 }
 
 // RouteMiddleware defines middleware for specific route patterns
@@ -122,13 +124,18 @@ func initObs(ctx context.Context, service string) (*obs.Observability, error) {
 func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 	options := []runtime.ServeMuxOption{
 		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
-			// Forward selected headers to gRPC metadata
-			switch strings.ToLower(key) {
-			case "authorization", "traceparent", "tracestate", "x-request-id", "signature":
-				return key, true
-			default:
-				return runtime.DefaultHeaderMatcher(key)
+			keyLower := strings.ToLower(key)
+
+			switch keyLower {
+			case "authorization", "traceparent", "tracestate", "x-request-id":
+				return keyLower, true
 			}
+
+			if outName, ok := a.customGrpcHeaders[keyLower]; ok {
+				return outName, true
+			}
+
+			return runtime.DefaultHeaderMatcher(key)
 		}),
 		runtime.WithMetadata(func(ctx context.Context, r *http.Request) metadata.MD {
 			md := metadata.MD{}
