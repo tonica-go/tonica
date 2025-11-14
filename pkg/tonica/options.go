@@ -89,14 +89,10 @@ func WithRouteMiddleware(pathPrefixes []string, middlewares ...gin.HandlerFunc) 
 	}
 }
 
-func WithCustomGrpcHeaders(headers map[string]string) AppOption {
+func WithCustomGrpcHeaders(headers []string) AppOption {
 	return func(a *App) {
-		if a.customGrpcHeaders == nil {
-			a.customGrpcHeaders = make(map[string]string)
-		}
-
-		for k, v := range headers {
-			a.customGrpcHeaders[k] = v
+		for _, v := range headers {
+			a.customGrpcHeaders = append(a.customGrpcHeaders, v)
 		}
 	}
 }

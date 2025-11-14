@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -59,7 +60,7 @@ type App struct {
 	// routeMiddlewares defines middleware for specific route patterns
 	routeMiddlewares []RouteMiddleware
 
-	customGrpcHeaders map[string]string
+	customGrpcHeaders []string
 }
 
 // RouteMiddleware defines middleware for specific route patterns
@@ -71,14 +72,15 @@ type RouteMiddleware struct {
 func NewApp(options ...AppOption) *App {
 	l := logger.New()
 	app := &App{
-		Name:           config.DefaultAppName,
-		registry:       registry.NewRegistry(),
-		logger:         l,
-		metricsManager: metrics.NewMetricsManager(exporters.Prometheus(config.DefaultAppName, "0.0.0")),
-		router:         gin.New(),
-		metricRouter:   gin.New(),
-		shutdown:       NewShutdown(),
-		apiPrefix:      "/v1", // default prefix for backward compatibility
+		Name:              config.DefaultAppName,
+		registry:          registry.NewRegistry(),
+		logger:            l,
+		metricsManager:    metrics.NewMetricsManager(exporters.Prometheus(config.DefaultAppName, "0.0.0")),
+		router:            gin.New(),
+		metricRouter:      gin.New(),
+		customGrpcHeaders: make([]string, 0),
+		shutdown:          NewShutdown(),
+		apiPrefix:         "/v1", // default prefix for backward compatibility
 	}
 
 	for _, option := range options {
@@ -131,8 +133,8 @@ func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 				return keyLower, true
 			}
 
-			if outName, ok := a.customGrpcHeaders[keyLower]; ok {
-				return outName, true
+			if slices.Contains(a.customGrpcHeaders, keyLower) {
+				return keyLower, true
 			}
 
 			return runtime.DefaultHeaderMatcher(key)
