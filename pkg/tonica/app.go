@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -58,6 +59,8 @@ type App struct {
 
 	// routeMiddlewares defines middleware for specific route patterns
 	routeMiddlewares []RouteMiddleware
+
+	customGrpcHeaders []string
 }
 
 // RouteMiddleware defines middleware for specific route patterns
@@ -69,14 +72,15 @@ type RouteMiddleware struct {
 func NewApp(options ...AppOption) *App {
 	l := logger.New()
 	app := &App{
-		Name:           config.DefaultAppName,
-		registry:       registry.NewRegistry(),
-		logger:         l,
-		metricsManager: metrics.NewMetricsManager(exporters.Prometheus(config.DefaultAppName, "0.0.0")),
-		router:         gin.New(),
-		metricRouter:   gin.New(),
-		shutdown:       NewShutdown(),
-		apiPrefix:      "/v1", // default prefix for backward compatibility
+		Name:              config.DefaultAppName,
+		registry:          registry.NewRegistry(),
+		logger:            l,
+		metricsManager:    metrics.NewMetricsManager(exporters.Prometheus(config.DefaultAppName, "0.0.0")),
+		router:            gin.New(),
+		metricRouter:      gin.New(),
+		customGrpcHeaders: make([]string, 0),
+		shutdown:          NewShutdown(),
+		apiPrefix:         "/v1", // default prefix for backward compatibility
 	}
 
 	for _, option := range options {
@@ -122,13 +126,18 @@ func initObs(ctx context.Context, service string) (*obs.Observability, error) {
 func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 	options := []runtime.ServeMuxOption{
 		runtime.WithIncomingHeaderMatcher(func(key string) (string, bool) {
-			// Forward selected headers to gRPC metadata
-			switch strings.ToLower(key) {
+			keyLower := strings.ToLower(key)
+
+			switch keyLower {
 			case "authorization", "traceparent", "tracestate", "x-request-id":
-				return key, true
-			default:
-				return runtime.DefaultHeaderMatcher(key)
+				return keyLower, true
 			}
+
+			if slices.Contains(a.customGrpcHeaders, keyLower) {
+				return keyLower, true
+			}
+
+			return runtime.DefaultHeaderMatcher(key)
 		}),
 		runtime.WithMetadata(func(ctx context.Context, r *http.Request) metadata.MD {
 			md := metadata.MD{}
