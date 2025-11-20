@@ -167,6 +167,30 @@ func (rb *RouteBuilder) BodyParam(description string, schema interface{}) *Route
 	return rb
 }
 
+// FormParam adds a form data parameter
+func (rb *RouteBuilder) FormParam(name, description, typ string) *RouteBuilder {
+	rb.parameters = append(rb.parameters, RouteParameter{
+		Name:        name,
+		In:          "formData",
+		Description: description,
+		Required:    true,
+		Type:        typ,
+	})
+	return rb
+}
+
+// FormFileParam adds a form data file parameter
+func (rb *RouteBuilder) FormFileParam(name, description string) *RouteBuilder {
+	rb.parameters = append(rb.parameters, RouteParameter{
+		Name:        name,
+		In:          "formData",
+		Description: description,
+		Required:    true,
+		Type:        "file",
+	})
+	return rb
+}
+
 // Response adds a response definition
 func (rb *RouteBuilder) Response(statusCode int, description string, schema interface{}) *RouteBuilder {
 	rb.responses[fmt.Sprintf("%d", statusCode)] = RouteResponse{

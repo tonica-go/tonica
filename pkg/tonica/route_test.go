@@ -117,6 +117,24 @@ func TestRouteBuilder_Parameters(t *testing.T) {
 		assert.Equal(t, schema, rb.parameters[0].Schema)
 		assert.True(t, rb.parameters[0].Required)
 	})
+
+	t.Run("FormParam", func(t *testing.T) {
+		rb := NewRoute(app).FormParam("username", "Username", "string")
+
+		require.Len(t, rb.parameters, 1)
+		assert.Equal(t, "username", rb.parameters[0].Name)
+		assert.Equal(t, "formData", rb.parameters[0].In)
+		assert.Equal(t, "string", rb.parameters[0].Type)
+	})
+
+	t.Run("FormFileParam", func(t *testing.T) {
+		rb := NewRoute(app).FormFileParam("avatar", "User avatar file")
+
+		require.Len(t, rb.parameters, 1)
+		assert.Equal(t, "avatar", rb.parameters[0].Name)
+		assert.Equal(t, "formData", rb.parameters[0].In)
+		assert.Equal(t, "file", rb.parameters[0].Type)
+	})
 }
 
 func TestRouteBuilder_Response(t *testing.T) {
