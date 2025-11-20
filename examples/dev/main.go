@@ -191,4 +191,33 @@ func customRouter(app *tonica.App) {
 				"message": "User created successfully",
 			})
 		})
+
+	// Example POST with form data and file upload
+	tonica.NewRoute(app).
+		POST("/secret").
+		Summary("Encrypt file").
+		Description("Encrypts the uploaded file and returns the encrypted data").
+		Tags("Custom", "Encryption").
+		FormFileParam("file", "File to encrypt").
+		FormParam("passphrase", "Passphrase for encryption", "string").
+		Response(200, "File encrypted successfully", tonica.InlineObjectSchema(map[string]string{
+			"encrypted_data": "string",
+		})).
+		Response(400, "Invalid input", tonica.InlineObjectSchema(map[string]string{
+			"error": "string",
+		})).
+		Handle(func(c *gin.Context) {
+			file, err := c.FormFile("file")
+			if err != nil {
+				c.JSON(400, gin.H{"error": "file is required"})
+				return
+			}
+
+			// Mock encryption process
+			encryptedData := fmt.Sprintf("encrypted_%s", file.Filename)
+
+			c.JSON(200, gin.H{
+				"encrypted_data": encryptedData,
+			})
+		})
 }
