@@ -159,7 +159,8 @@ func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 	if a.useGatewayProtoMessages {
 		options = append(options, runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
 			MarshalOptions: protojson.MarshalOptions{
-				UseProtoNames: true,
+				UseProtoNames:   true,
+				EmitUnpopulated: true,
 			},
 			UnmarshalOptions: protojson.UnmarshalOptions{
 				DiscardUnknown: true,
