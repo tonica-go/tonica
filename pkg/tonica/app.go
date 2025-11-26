@@ -25,6 +25,7 @@ import (
 	"github.com/tonica-go/tonica/pkg/tonica/modules/workflows"
 	obs "github.com/tonica-go/tonica/pkg/tonica/observabillity"
 	"github.com/tonica-go/tonica/pkg/tonica/registry"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -369,6 +370,11 @@ func (a *App) registerWorkers(_ context.Context) {
 // UnaryInterceptor returns a gRPC unary interceptor that authenticates incoming requests.
 func UnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		// Inject trace_id into context (similar to identity) from active span
+		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+			ctx = context.WithValue(ctx, "trace_id", sc.TraceID().String())
+		}
+
 		// Allowlist unauthenticated methods (e.g., login, session refresh, health checks)
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {

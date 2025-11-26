@@ -186,7 +186,14 @@ func HTTPTracing(serviceName string) gin.HandlerFunc {
 		ctx, span := tracer.Start(ctx, spanName, opts...)
 		defer span.End()
 
-		// Update request context with span context
+		// Add trace_id to context for downstream usage similar to identity
+		sc := trace.SpanContextFromContext(ctx)
+		if sc.IsValid() {
+			ctx = context.WithValue(ctx, "trace_id", sc.TraceID().String())
+			c.Set("trace_id", sc.TraceID().String())
+		}
+
+		// Update request context with span context (and trace_id)
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 
