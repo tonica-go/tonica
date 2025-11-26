@@ -153,11 +153,6 @@ func (a *App) registerGateway(ctx context.Context) *runtime.ServeMux {
 				md.Set("x-identity", string(ib))
 			}
 
-			// Прокидываем trace_id в metadata, если он есть в контексте
-			if traceID, ok := ctx.Value("trace_id").(string); ok && traceID != "" {
-				md.Set("x-trace-id", traceID)
-			}
-
 			return md
 		}),
 	}
